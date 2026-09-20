@@ -1,6 +1,6 @@
 import { Plugin, Skill } from "@opencode/plugin/effect"
 import { Deferred, Effect, Fiber, Ref, Schema } from "effect"
-import { formatRun, handleCommand, handleTool, summaries } from "./commands.ts"
+import { handleTool, summaries } from "./commands.ts"
 import { discoverWorkflows } from "./discover.ts"
 import type { Workflow } from "./dsl.ts"
 import type { RunSnapshot } from "./engine.ts"
@@ -112,26 +112,6 @@ export default Plugin.define({
       yield* Effect.addFinalizer(() =>
         Effect.forEach([...registry.fibers.values()], Fiber.interrupt, { discard: true }),
       )
-
-      yield* ctx.command.transform((editor) => {
-        editor.add({
-          name: "workflow",
-          description: "List, start, or control a workflow",
-          execute: (input) =>
-            Effect.gen(function* () {
-              yield* reload.pipe(Effect.orDie)
-              const found = yield* Ref.get(workflows)
-              const text = yield* handleCommand({
-                text: input.prompt.text.trim(),
-                sessionID: input.sessionID,
-                workflows: found,
-                registry,
-                launch,
-              })
-              yield* ctx.session.synthetic({ sessionID: input.sessionID, text }).pipe(Effect.orDie)
-            }),
-        })
-      })
 
       yield* ctx.tool.transform((editor) => {
         editor.add({
