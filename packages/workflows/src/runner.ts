@@ -30,7 +30,7 @@ export const startRun = (options: {
       host,
       runId,
       onEvent: (event) => options.emit(event.run),
-    }).pipe(Effect.tap(options.emit), Effect.forkChild)
+    }).pipe(Effect.tap(options.emit), Effect.forkDetach({ startImmediately: true }))
     options.registry.fibers.set(runId, fiber)
     return initial
   })
