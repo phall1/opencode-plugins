@@ -9,13 +9,15 @@ plugin. Checkpoints are deferred values. Cancel interrupts the fiber.
 opencode plugin add @phall1/opencode-workflows
 ```
 
-Or load from source:
+Or load the package from this repo:
 
 ```jsonc
 {
-  "plugins": ["./packages/workflows/src/index.ts"]
+  "plugins": ["./packages/workflows"]
 }
 ```
+
+The CLI loads `./tui` from the same package. Do not add it to `cli.json`.
 
 ## Commands
 

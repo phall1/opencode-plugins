@@ -29,12 +29,6 @@ Bundled: `echo`, `autoplan`, `autodoc`, `autoimplement`, `sanity-check`,
 
 ## Local development
 
-Open this directory in OpenCode. Project `opencode.jsonc` points at the source
-plugin. For the TUI panel, add the CLI plugin:
-
-```jsonc
-// ~/.config/opencode/cli.json
-{
-  "plugins": ["/Users/phall/workspace/opencode-plugins/packages/workflows/src/tui.tsx"]
-}
-```
+Open this directory in OpenCode. Project `opencode.jsonc` loads
+`./packages/workflows`, which exports both the server plugin and `./tui`.
+The CLI picks the TUI up automatically — nothing in `cli.json`.
