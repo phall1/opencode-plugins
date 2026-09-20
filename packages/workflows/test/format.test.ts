@@ -15,7 +15,7 @@ const run: RunSnapshot = {
 
 describe("formatRun", () => {
   test("prints a finished graph with outputs", () => {
-    expect(formatRun(run)).toBe(`✓ ping  done\n✓ pong  {"ok":true,"echo":"hi"}`)
+    expect(formatRun(run)).toBe(`✓ ping  done\n✓ pong\n{"ok":true,"echo":"hi"}`)
   })
 })
 
@@ -27,7 +27,7 @@ describe("formatList", () => {
       nodes: { pong: compute({ run: () => "ok" }) },
       edges: [],
     })
-    expect(formatList([workflow])).toContain("/workflow ping hi")
+    expect(formatList([workflow])).toContain("ping hi")
     expect(formatList([workflow])).toContain("ping  (pong)")
   })
 })

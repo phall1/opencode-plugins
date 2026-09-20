@@ -2,7 +2,7 @@ import { Plugin, usePlugin } from "@opencode/plugin/tui"
 import type { PanelInput } from "@opencode/plugin/tui/context"
 import { For, Show } from "solid-js"
 import type { RunSnapshot } from "./engine.ts"
-import { formatRun, glyph } from "./format.ts"
+import { formatGraph, formatRun, glyph } from "./format.ts"
 import { Workflows } from "./rpc.ts"
 
 type CallOpts = { location?: { directory?: string } }
@@ -236,15 +236,16 @@ function Graph(props: { run: RunSnapshot | null; panel: PanelInput }) {
   }))
   return (
     <box paddingLeft={1} paddingRight={1} paddingTop={1} gap={1}>
-      <text fg={context.theme.text.muted}>esc closes · /workflow-graph toggles</text>
+      <text fg={context.theme.text.muted}>kicked off · this chat is free · esc closes</text>
       <Show when={props.run} fallback={<text fg={context.theme.text.muted}>No run yet. /workflow ping hi</text>}>
         <text fg={context.theme.text.base}>
           {glyph(props.run?.status ?? "")} {props.run?.workflow} · {props.run?.status}
         </text>
+        <text fg={context.theme.text.base}>{formatGraph(props.run!)}</text>
         <For each={props.run?.nodes ?? []}>
           {(node) => (
             <text fg={context.theme.text.base}>
-              {glyph(node.status)} {node.id}
+              {glyph(node.status)} {node.id} · {node.type}
             </text>
           )}
         </For>

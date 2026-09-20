@@ -5,84 +5,89 @@ export type BundledSkill = {
   content: string
 }
 
+const kickoff = `Call the \`workflow\` tool with action \`start\` once, complete input, then **end the turn**. Do not wait. Do not do the graph's work in this conversation. Child sessions run the steps.`
+
 export const bundledSkills: readonly BundledSkill[] = [
   {
     id: "workflows",
     name: "workflows",
     description:
-      "Operate or author OpenCode workflows: list, start, status, cancel, answer, submit, and compose graphs.",
+      "Kick off a workflow from natural language, author a .workflow.ts graph, or control a run. Use when the task is multi-step routing, planning, implementing, documenting, monitoring, or a sanity check — not only when the user types /workflow.",
     content: `# Workflows
 
-Use a workflow for multi-step work that needs explicit routing. Keep one-turn work outside a workflow.
+From ordinary chat, start a graph instead of doing the multi-step work yourself.
 
-The \`workflow\` tool is the authority for call shapes.
+${kickoff}
 
-- \`list\` — discovered workflow names
-- \`start\` — name plus complete input. Call once, then end the turn.
-- \`status\` / \`cancel\` — active run, or \`runId\`
-- \`submit\` — structured output for the current agent step
-- \`answer\` — ordinary checkpoint. Do not answer a protected human gate.
+- \`list\` — names
+- \`start\` — name plus complete \`task\`. Once.
+- \`status\` / \`cancel\` — only if asked
+- \`submit\` — only in a child session titled \`workflow:<node>\`
+- \`answer\` — checkpoint
 
-After start, wait for the next step contract. When an agent step arrives, do the work, then submit or reply as the contract says.
-
-Author graphs with \`defineWorkflow\`, \`agent\`, \`compute\`, \`decision\`, \`checkpoint\`, \`wait\`, and \`includeWorkflow\` from \`@phall1/opencode-workflows/dsl\`.
+Author: \`.opencode/workflows/<name>.workflow.ts\` or \`~/.config/opencode/workflows/\`. Default-export \`defineWorkflow\`. \`compute\` is code. \`agent\` is a child turn. \`decision\` is an edge. \`session: "origin"\` only to read this chat.
 `,
   },
   {
     id: "autoplan",
     name: "autoplan",
     description:
-      "Select the best practical in-scope solution and write an implementation plan. Use when the user asks to run autoplan.",
+      "User wants a plan, options compared, or a decision about what to build. Start autoplan even if they never said the word autoplan.",
     content: `# Autoplan
 
-Start the built-in \`autoplan\` workflow once with complete input:
+${kickoff}
 
-- \`task\` / \`problem\` — the decision and observable end state
-- \`scope\` — repositories and interfaces that may change
-- \`constraints\` — array, empty if none
+Workflow name: \`autoplan\`. Pass \`task\` (the decision and end state), optional \`scope\`, optional \`constraints\` array.
 
-Then end the turn. Do not implement unless the user also asked for implementation.
-
-The graph captures user intent, records 2–4 practical candidates plus the ideal, chooses without asking the user, writes a detailed plan, and shows a short assistant summary.
+Do not implement in this turn.
 `,
   },
   {
     id: "autodoc",
     name: "autodoc",
-    description: "Record an existing selected plan in canonical docs. Use when the user asks to run autodoc.",
+    description:
+      "User wants an existing plan recorded in canonical docs. Start autodoc; do not write the docs in this chat.",
     content: `# Autodoc
 
-Start \`autodoc\` once. Pass the selected plan. Autodoc does not devise or implement. If no plan exists, stop and use autoplan.
+${kickoff}
+
+Workflow name: \`autodoc\`. Pass the selected plan. If none exists, start \`autoplan\` instead.
 `,
   },
   {
     id: "autoimplement",
     name: "autoimplement",
     description:
-      "Implement an existing plan, verify it, and open or update a PR. Use when the user asks to run autoimplement.",
+      "User wants an existing plan implemented, built, shipped, or turned into a PR. Start autoimplement; do not implement here.",
     content: `# Autoimplement
 
-Start \`autoimplement\` once with the existing plan, repository path, and scope. Do not devise an initial plan. If evidence invalidates the plan, the graph can return to planning; do not start a second workflow yourself.
+${kickoff}
+
+Workflow name: \`autoimplement\`. Pass the plan, repo path, and scope. Do not invent the plan.
 `,
   },
   {
     id: "sanity-check",
     name: "sanity-check",
     description:
-      "Read-only review of whether a contribution is necessary, focused, and well supported. Use when the user asks for a sanity check.",
+      "User wants a keep/drop/simplify review of a change. Start sanity-check; do not review in this chat.",
     content: `# Sanity Check
 
-Start \`sanity-check\` once. It is read-only. It returns keep, simplify, refactor, drop, or needs_evidence.
+${kickoff}
+
+Workflow name: \`sanity-check\`. Read-only. Returns keep, simplify, refactor, drop, or needs_evidence.
 `,
   },
   {
     id: "monitor",
     name: "monitor",
     description:
-      "Watch a goal, act when authorized work is available, wait otherwise. Use when the user asks to monitor or watch something.",
+      "User wants something watched, polled, or acted on when work appears. Start monitor; do not sit in a loop here.",
     content: `# Monitor
 
-Start \`monitor\` once with \`task\`, optional \`stopWhen\`, optional \`everyMinutes\` (default 30), optional \`maxChecks\`. Monitoring does not grant new authority.
+${kickoff}
+
+Workflow name: \`monitor\`. Pass \`task\`, optional \`stopWhen\`, optional \`everyMinutes\` (default 30). Grants no new authority.
 `,
   },
 ]

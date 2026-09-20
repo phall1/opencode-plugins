@@ -22,16 +22,19 @@ export function formatList(workflows: Workflow[]): string {
     return "No workflows found. Put files in .opencode/workflows/*.workflow.ts"
   }
   const lines = workflows.map((workflow) => `${workflow.name}  (${Object.keys(workflow.nodes).join(" → ")})`)
-  return [`Try /workflow ping hi — it finishes in this chat.`, ...lines].join("\n")
+  return [`Kick off with /workflow ping hi — this chat stays free.`, ...lines].join("\n")
+}
+
+export function formatGraph(run: RunSnapshot): string {
+  return run.nodes.map((node) => `${glyph(node.status)} ${node.id}`).join(" → ")
 }
 
 export function formatRun(run: RunSnapshot): string {
   const head = `${glyph(run.status)} ${run.workflow}  ${run.status}`
-  const nodes = run.nodes.map((node) => {
-    const output = node.status === "done" ? compact(run.outputs[node.id]) : ""
-    return output ? `${glyph(node.status)} ${node.id}  ${output}` : `${glyph(node.status)} ${node.id}`
-  })
-  return [head, ...nodes, run.error ?? ""].filter(Boolean).join("\n")
+  const graph = formatGraph(run)
+  const current = run.nodes.find((node) => node.id === run.cursor)
+  const output = current?.status === "done" ? compact(run.outputs[run.cursor]) : ""
+  return [head, graph, output, run.error ?? ""].filter(Boolean).join("\n")
 }
 
 export function narrateLine(event: RunEvent): string | undefined {

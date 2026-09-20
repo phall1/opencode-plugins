@@ -136,7 +136,8 @@ export default Plugin.define({
       yield* ctx.tool.transform((editor) => {
         editor.add({
           name: "workflow",
-          description: "List, start, inspect, cancel, submit, or answer a workflow run",
+          description:
+            "Kick off a workflow from the user's request. Start once with name and task, then end the turn. Child sessions do the work. This chat stays free. submit only inside a workflow child session.",
           input: ToolInput,
           execute: (input, context) =>
             Effect.gen(function* () {
