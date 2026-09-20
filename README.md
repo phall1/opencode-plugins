@@ -30,5 +30,5 @@ Bundled: `echo`, `autoplan`, `autodoc`, `autoimplement`, `sanity-check`,
 ## Local development
 
 Open this directory in OpenCode. Project `opencode.jsonc` loads
-`./packages/workflows`, which exports both the server plugin and `./tui`.
-The CLI picks the TUI up automatically — nothing in `cli.json`.
+`./packages/workflows`. Local plugins need `server.ts` / `tui.tsx` at the
+package root (same layout as beads). The CLI picks `./tui` up automatically.
