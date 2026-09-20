@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@phall1/opencode-workflows",
+  "version": "0.0.1",
+  "description": "Typed workflow graphs for OpenCode V2",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phall1/opencode-plugins.git",
+    "directory": "packages/workflows"
+  },
+  "homepage": "https://github.com/phall1/opencode-plugins/tree/main/packages/workflows",
+  "bugs": "https://github.com/phall1/opencode-plugins/issues",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "workflow",
+    "tui"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./dsl": "./src/dsl.ts",
+    "./rpc": "./src/rpc.ts",
+    "./tui": "./src/tui.tsx"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "check": "bun run typecheck && bun run test",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode/plugin": "^2.0.11",
+    "zod": "^4.1.8"
+  },
+  "peerDependencies": {
+    "@opentui/core": ">=0.5.10",
+    "@opentui/solid": ">=0.5.10",
+    "solid-js": ">=1.9.0"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "1.0.9",
+    "@opentui/core": "0.5.10",
+    "@opentui/solid": "0.5.10",
+    "solid-js": "1.9.14"
+  }
+}
