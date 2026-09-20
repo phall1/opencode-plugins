@@ -4,16 +4,10 @@ import { For, Show } from "solid-js"
 import type { RunSnapshot } from "./engine.ts"
 import { Workflows } from "./rpc.ts"
 
-type WorkflowSummary = {
-  name: string
-  startAt: string
-  nodes: string[]
-}
-
 type CallOpts = { location?: { directory?: string } }
 
 type Rpc = {
-  list: (input?: object, options?: CallOpts) => Promise<{ workflows: WorkflowSummary[] }>
+  list: (input?: object, options?: CallOpts) => Promise<{ workflows: Array<{ name: string; nodes: string[] }> }>
   start: (input: { name: string; task?: string; sessionID?: string }, options?: CallOpts) => Promise<{ run: RunSnapshot }>
   status: (input?: { runId?: string }, options?: CallOpts) => Promise<{ run?: RunSnapshot }>
   cancel: (input?: { runId?: string }, options?: CallOpts) => Promise<{ run?: RunSnapshot }>
@@ -28,52 +22,31 @@ export default Plugin.define({
       initial: { run: null as RunSnapshot | null },
     })
 
-    const stop = rpc.events.on("updated", (event) => {
-      setActive((draft) => {
-        draft.run = event.data.run
-      })
-    })
-
-    void rpc.status({}, callOpts(context)).then((result) => {
-      if (result.run) {
+    let stop = () => {}
+    try {
+      stop = rpc.events.on("updated", (event) => {
         setActive((draft) => {
-          draft.run = result.run ?? null
+          draft.run = event.data.run
         })
-      }
-    })
+      })
+    } catch {
+      // RPC may not be up yet at CLI plugin setup.
+    }
+
+    void rpc.status({}, callOpts(context)).then(
+      (result) => {
+        if (result.run) {
+          setActive((draft) => {
+            draft.run = result.run ?? null
+          })
+        }
+      },
+      () => undefined,
+    )
 
     const unslotCommands = context.ui.slot({
       append: "app",
-      render: () => {
-        context.keymap.layer(() => ({
-          mode: "global",
-          commands: [
-            {
-              id: "phall.workflows.run",
-              title: "Workflow",
-              description: "Start a workflow",
-              group: "Workflows",
-              palette: true,
-              slash: { name: "workflow", arguments: true },
-              run: (input) => {
-                void handleSlash(context, rpc, input)
-              },
-            },
-            {
-              id: "phall.workflows.panel",
-              title: "Workflow graph",
-              description: "Toggle the workflow panel",
-              group: "Workflows",
-              palette: true,
-              slash: { name: "workflow-graph" },
-              run: () => {
-                togglePanel(context)
-              },
-            },
-          ],
-        }))
-        return null
-      },
+      render: () => <WorkflowCommands rpc={rpc} />,
     })
 
     const unslotStatus = context.ui.slot({
@@ -99,24 +72,52 @@ export default Plugin.define({
   },
 })
 
-function togglePanel(context: ReturnType<typeof usePlugin>): void {
-  const current = context.ui.panel.current()
-  if (current?.name === "phall.workflows") {
-    context.ui.panel.close()
-    return
-  }
-  if (!context.ui.panel.open("phall.workflows")) {
-    context.ui.toast.show({ message: "Open a session first", variant: "warning" })
-  }
+function WorkflowCommands(props: { rpc: Rpc }) {
+  const context = usePlugin()
+  context.keymap.layer(() => ({
+    mode: "global",
+    commands: [
+      {
+        id: "phall.workflows.run",
+        title: "Workflow",
+        description: "Start a workflow",
+        group: "Workflows",
+        palette: true,
+        slash: { name: "workflow", arguments: true },
+        run: (input) => {
+          void runWorkflowCommand(context, props.rpc, input)
+        },
+      },
+      {
+        id: "phall.workflows.panel",
+        title: "Workflow graph",
+        description: "Toggle the workflow panel",
+        group: "Workflows",
+        palette: true,
+        slash: { name: "workflow-graph" },
+        run: () => {
+          const current = context.ui.panel.current()
+          if (current?.name === "phall.workflows") {
+            context.ui.panel.close()
+            return
+          }
+          if (!context.ui.panel.open("phall.workflows")) {
+            context.ui.toast.show({ message: "Open a session first", variant: "warning" })
+          }
+        },
+      },
+    ],
+  }))
+  return null
 }
 
-async function handleSlash(
+async function runWorkflowCommand(
   context: ReturnType<typeof usePlugin>,
   rpc: Rpc,
   input?: string,
 ): Promise<void> {
+  const opts = callOpts(context)
   try {
-    const opts = callOpts(context)
     const [head, ...rest] = (input ?? "").trim().split(/\s+/).filter(Boolean)
     if (head === "status") {
       const run = (await rpc.status({ runId: rest[0] }, opts)).run
@@ -137,7 +138,17 @@ async function handleSlash(
     }
 
     const workflows = (await rpc.list({}, opts)).workflows ?? []
-    const name = head && head !== "list" ? head : await pickWorkflow(context, workflows)
+    const name =
+      head && head !== "list"
+        ? head
+        : await context.ui.dialog.select({
+            title: "Start workflow",
+            options: workflows.map((workflow) => ({
+              title: workflow.name,
+              value: workflow.name,
+              description: workflow.nodes.join(" → "),
+            })),
+          })
     if (!name) return
 
     const sessionID = sessionIDOf(context)
@@ -149,15 +160,13 @@ async function handleSlash(
       return
     }
 
-    const started = await rpc.start(
-      {
-        name,
-        task: rest.join(" ") || undefined,
-        sessionID,
-      },
-      opts,
-    )
-    setActiveRun(context, started.run)
+    const started = await rpc.start({ name, task: rest.join(" ") || undefined, sessionID }, opts)
+    const [, update] = context.storage.memory("active-run", {
+      initial: { run: null as RunSnapshot | null },
+    })
+    update((draft) => {
+      draft.run = started.run
+    })
     context.ui.panel.open("phall.workflows")
     context.ui.toast.show({ title: name, message: started.run.status, variant: "success" })
   } catch (error) {
@@ -169,27 +178,15 @@ async function handleSlash(
   }
 }
 
-async function pickWorkflow(
-  context: ReturnType<typeof usePlugin>,
-  workflows: WorkflowSummary[],
-): Promise<string | undefined> {
-  if (workflows.length === 0) {
-    await context.ui.dialog.alert({ title: "Workflow", message: "No workflows found." })
-    return undefined
-  }
-  return context.ui.dialog.select({
-    title: "Start workflow",
-    options: workflows.map((workflow) => ({
-      title: workflow.name,
-      value: workflow.name,
-      description: workflow.nodes.join(" → "),
-    })),
-  })
-}
-
 function callOpts(context: ReturnType<typeof usePlugin>): CallOpts {
   const directory = context.location?.directory ?? context.data.location.default()?.directory
   return directory ? { location: { directory } } : {}
+}
+
+function sessionIDOf(context: ReturnType<typeof usePlugin>): string | undefined {
+  const route = context.ui.router.current()
+  if (route?.type === "session") return route.sessionID
+  return context.ui.tabs.list().find((tab) => tab.active)?.sessionID
 }
 
 function errorMessage(error: unknown): string {
@@ -205,21 +202,6 @@ function errorMessage(error: unknown): string {
   } catch {
     return "Unknown workflow error"
   }
-}
-
-function sessionIDOf(context: ReturnType<typeof usePlugin>): string | undefined {
-  const route = context.ui.router.current()
-  if (route?.type === "session") return route.sessionID
-  return context.ui.tabs.list().find((tab) => tab.active)?.sessionID
-}
-
-function setActiveRun(context: ReturnType<typeof usePlugin>, run: RunSnapshot): void {
-  const [, update] = context.storage.memory("active-run", {
-    initial: { run: null as RunSnapshot | null },
-  })
-  update((draft) => {
-    draft.run = run
-  })
 }
 
 function formatRun(run: RunSnapshot): string {
