@@ -29,6 +29,8 @@ describe("runWorkflow", () => {
     expect(result.status).toBe("done")
     expect(result.outputs.reply).toEqual({ reply: "hi" })
     expect(result.nodes[0]?.status).toBe("done")
+    expect(result).not.toHaveProperty("nodeStatus")
+    expect(result).not.toHaveProperty("steps")
   })
 
   test("chains compute nodes through edges", async () => {

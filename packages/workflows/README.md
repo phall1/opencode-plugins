@@ -23,11 +23,13 @@ The CLI loads `./tui` from the same package. Do not add it to `cli.json`.
 
 ```
 /workflow                         list
+/workflow ping hi                 start (finishes immediately)
+/workflow echo hi                 talks in this session
 /workflow autoplan <task>         start
 /workflow status
 /workflow cancel
 /workflow answer { ... }
-/workflow-graph                   session panel
+/workflow-graph                   session panel (esc closes)
 ```
 
 The model uses the `workflow` tool (`list`, `start`, `status`, `cancel`,
@@ -37,7 +39,8 @@ The model uses the `workflow` tool (`list`, `start`, `status`, `cancel`,
 
 | Name | What it does |
 | --- | --- |
-| `echo` | One agent step |
+| `ping` | Compute-only. Finishes in this chat so you can see a `done` run. |
+| `echo` | One agent step in this session |
 | `autoplan` | Intent → candidates → choose → plan → summary |
 | `autodoc` | Record an existing plan in docs |
 | `autoimplement` | Implement, verify, fix loop |

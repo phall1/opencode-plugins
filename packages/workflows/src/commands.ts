@@ -1,8 +1,11 @@
 import { Deferred, Effect } from "effect"
 import { RESERVED_WORKFLOW_NAMES, type Workflow } from "./dsl.ts"
 import type { RunSnapshot } from "./engine.ts"
+import { formatList, formatRun } from "./format.ts"
 import type { RunRegistry } from "./registry.ts"
 import { cancelRun } from "./runner.ts"
+
+export { formatList, formatRun } from "./format.ts"
 
 export function summaries(workflows: Workflow[]) {
   return workflows.map((workflow) => ({
@@ -97,35 +100,6 @@ export const handleTool = (options: {
     }
     return `Unknown action "${options.action}"`
   })
-
-export function formatList(workflows: Workflow[]): string {
-  if (workflows.length === 0) {
-    return "No workflows found. Put files in .opencode/workflows/*.workflow.ts"
-  }
-  return workflows
-    .map((workflow) => `${workflow.name}  (${Object.keys(workflow.nodes).join(" → ")})`)
-    .join("\n")
-}
-
-export function formatRun(run: RunSnapshot): string {
-  const nodes = run.nodes.map((node) => `${glyph(node.status)} ${node.id}`).join("\n")
-  return [`${run.workflow}  ${run.status}  ${run.id}`, nodes, run.error ?? ""].filter(Boolean).join("\n")
-}
-
-function glyph(status: string): string {
-  switch (status) {
-    case "done":
-      return "✓"
-    case "running":
-      return "▶"
-    case "waiting":
-      return "⏸"
-    case "failed":
-      return "✕"
-    default:
-      return "·"
-  }
-}
 
 function parseAnswer(text: string): unknown {
   if (!text) return {}

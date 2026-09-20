@@ -2,6 +2,7 @@ import { Plugin, usePlugin } from "@opencode/plugin/tui"
 import type { PanelInput } from "@opencode/plugin/tui/context"
 import { For, Show } from "solid-js"
 import type { RunSnapshot } from "./engine.ts"
+import { formatRun, glyph } from "./format.ts"
 import { Workflows } from "./rpc.ts"
 
 type CallOpts = { location?: { directory?: string } }
@@ -168,7 +169,11 @@ async function runWorkflowCommand(
       draft.run = started.run
     })
     context.ui.panel.open("phall.workflows")
-    context.ui.toast.show({ title: name, message: started.run.status, variant: "success" })
+    context.ui.toast.show({
+      title: started.run.workflow,
+      message: started.run.status === "done" ? "done" : `${started.run.status} · ${started.run.cursor}`,
+      variant: started.run.status === "failed" ? "error" : "success",
+    })
   } catch (error) {
     context.ui.toast.show({
       title: "Workflow",
@@ -204,17 +209,12 @@ function errorMessage(error: unknown): string {
   }
 }
 
-function formatRun(run: RunSnapshot): string {
-  const nodes = run.nodes.map((node) => `${node.status} ${node.id}`).join("\n")
-  return [run.id, nodes, run.error ?? ""].filter(Boolean).join("\n")
-}
-
 function Status(props: { run: RunSnapshot | null }) {
   const context = usePlugin()
   return (
     <Show when={props.run}>
       <text fg={context.theme.text.muted}>
-        {props.run?.workflow}:{props.run?.cursor} {props.run?.status}
+        {glyph(props.run?.status ?? "")} {props.run?.workflow} · {props.run?.cursor}
       </text>
     </Show>
   )
@@ -236,33 +236,21 @@ function Graph(props: { run: RunSnapshot | null; panel: PanelInput }) {
   return (
     <box paddingLeft={1} paddingRight={1} paddingTop={1} gap={1}>
       <text fg={context.theme.text.muted}>esc closes · /workflow-graph toggles</text>
-      <Show when={props.run} fallback={<text fg={context.theme.text.muted}>No run yet. /workflow to start one.</text>}>
+      <Show when={props.run} fallback={<text fg={context.theme.text.muted}>No run yet. /workflow ping hi</text>}>
         <text fg={context.theme.text.base}>
-          {props.run?.workflow} · {props.run?.status} · {props.run?.id}
+          {glyph(props.run?.status ?? "")} {props.run?.workflow} · {props.run?.status}
         </text>
         <For each={props.run?.nodes ?? []}>
           {(node) => (
             <text fg={context.theme.text.base}>
-              {glyph(node.status)} {node.id} · {node.type}
+              {glyph(node.status)} {node.id}
             </text>
           )}
         </For>
+        <Show when={props.run?.error}>
+          <text fg={context.theme.text.muted}>{props.run?.error}</text>
+        </Show>
       </Show>
     </box>
   )
-}
-
-function glyph(status: string): string {
-  switch (status) {
-    case "done":
-      return "✓"
-    case "running":
-      return "▶"
-    case "waiting":
-      return "⏸"
-    case "failed":
-      return "✕"
-    default:
-      return "·"
-  }
 }

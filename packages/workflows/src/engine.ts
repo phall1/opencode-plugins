@@ -324,13 +324,21 @@ function snapshots(workflow: Workflow, nodeStatus: Record<string, NodeRunStatus>
   return [...nodes, ...includes]
 }
 
-function snapshot(run: MutableRun): RunSnapshot {
-  const { nodeStatus: _, steps: __, ...rest } = run
+export function toSnapshot(run: MutableRun | RunSnapshot): RunSnapshot {
   return {
-    ...rest,
+    id: run.id,
+    workflow: run.workflow,
+    status: run.status,
+    cursor: run.cursor,
+    input: run.input,
     outputs: { ...run.outputs },
+    error: run.error,
     nodes: run.nodes.map((node) => ({ ...node })),
   }
+}
+
+function snapshot(run: MutableRun): RunSnapshot {
+  return toSnapshot(run)
 }
 
 function choiceOf(output: unknown): string | undefined {

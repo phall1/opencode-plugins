@@ -1,9 +1,19 @@
 import { Plugin } from "@opencode/plugin/effect"
-import { Deferred, Effect, Fiber } from "effect"
+import { Deferred, Duration, Effect, Fiber } from "effect"
 import type { Workflow } from "./dsl.ts"
-import { createRun, createRunId, runWorkflow, type RunSnapshot } from "./engine.ts"
+import {
+  createRun,
+  createRunId,
+  runWorkflow,
+  toSnapshot,
+  type RunEvent,
+  type RunSnapshot,
+} from "./engine.ts"
+import { narrateLine } from "./format.ts"
 import { createHost } from "./host.ts"
 import type { RunRegistry } from "./registry.ts"
+
+const SETTLE_TICKS = 25
 
 export const startRun = (options: {
   workflow: Workflow
@@ -21,18 +31,25 @@ export const startRun = (options: {
       runId,
       originSessionID: options.originSessionID,
     })
-    const initial = createRun(options.workflow, options.input, runId)
+    const initial = toSnapshot(createRun(options.workflow, options.input, runId))
     options.registry.put(initial)
     yield* options.emit(initial)
+
+    const live = { on: false }
     const fiber = yield* runWorkflow({
       workflow: options.workflow,
       input: options.input,
       host,
       runId,
-      onEvent: (event) => options.emit(event.run),
+      onEvent: (event) =>
+        options.emit(event.run).pipe(Effect.andThen(maybeNarrate(options, live, event))),
     }).pipe(Effect.tap(options.emit), Effect.forkDetach({ startImmediately: true }))
     options.registry.fibers.set(runId, fiber)
-    return initial
+
+    yield* waitWhileRunning(options.registry, runId)
+    const latest = options.registry.get(runId) ?? initial
+    if (latest.status === "running" || latest.status === "waiting") live.on = true
+    return latest
   })
 
 export const cancelRun = (registry: RunRegistry, runId: string): Effect.Effect<RunSnapshot | undefined> =>
@@ -55,6 +72,37 @@ export const cancelRun = (registry: RunRegistry, runId: string): Effect.Effect<R
     registry.put(cancelled)
     return cancelled
   })
+
+const waitWhileRunning = (registry: RunRegistry, runId: string, remaining = SETTLE_TICKS): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const run = registry.get(runId)
+    if (!run || run.status !== "running" || remaining <= 0) return
+    yield* Effect.sleep(Duration.millis(16))
+    return yield* waitWhileRunning(registry, runId, remaining - 1)
+  })
+
+const maybeNarrate = (
+  options: {
+    ctx: Plugin.Context
+    originSessionID?: string
+  },
+  live: { on: boolean },
+  event: RunEvent,
+): Effect.Effect<void> => {
+  if (!live.on || !options.originSessionID) return Effect.void
+  const text = narrateLine(event)
+  if (!text) return Effect.void
+  return options.ctx.session
+    .synthetic({
+      sessionID: options.originSessionID as never,
+      text,
+      resume: false,
+    })
+    .pipe(
+      Effect.asVoid,
+      Effect.catch(() => Effect.void),
+    )
+}
 
 function cancelledError(): Error {
   const error = new Error("Workflow cancelled")
