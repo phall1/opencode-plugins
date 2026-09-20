@@ -79,7 +79,7 @@ export function agent(
     type: "agent",
     prompt: spec.prompt,
     output: spec.output ?? "json",
-    session: spec.session ?? "origin",
+    session: spec.session ?? "child",
   }
 }
 

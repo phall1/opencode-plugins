@@ -68,8 +68,10 @@ export default defineWorkflow({
 })
 ```
 
-`agent` defaults to this conversation, like Pi. Use `session: "child"` for a
-hidden session. `decision` is a Jev
+`/workflow` kicks off a run and returns. Agent steps default to a **child
+session**, so this chat stays yours. Use `session: "origin"` only when a step
+must read this conversation (autoplan capture). The graph panel is the
+progress UI, not a hijacked turn. `decision` is a Jev
 Choice when `TYPESAFE_API_KEY` is set, otherwise `generate.text`. Below
 `minConfidence` the graph gets `uncertain`. `wait` sleeps on the OpenCode
 service. `includeWorkflow` runs a child graph and routes on named exits.
