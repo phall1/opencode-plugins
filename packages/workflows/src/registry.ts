@@ -1,23 +1,17 @@
+import { Deferred, type Fiber } from "effect"
 import type { RunSnapshot } from "./engine.ts"
 
-export type PendingCheckpoint = {
-  runId: string
-  resolve: (value: unknown) => void
-  reject: (error: Error) => void
-}
-
-export type ActiveAgent = {
+export type AgentWaiter = {
   runId: string
   nodeId: string
-  resolve: (value: unknown) => void
-  reject: (error: Error) => void
+  deferred: Deferred.Deferred<unknown, Error>
 }
 
 export class RunRegistry {
   readonly runs = new Map<string, RunSnapshot>()
-  readonly controllers = new Map<string, AbortController>()
-  readonly checkpoints = new Map<string, PendingCheckpoint>()
-  readonly agents = new Map<string, ActiveAgent>()
+  readonly checkpoints = new Map<string, Deferred.Deferred<unknown, Error>>()
+  readonly agents = new Map<string, AgentWaiter>()
+  readonly fibers = new Map<string, Fiber.Fiber<RunSnapshot, never>>()
   activeRunId: string | undefined
 
   get(runId?: string): RunSnapshot | undefined {
@@ -37,29 +31,5 @@ export class RunRegistry {
     this.runs.set(run.id, run)
     if (run.status === "running" || run.status === "waiting") this.activeRunId = run.id
     else if (this.activeRunId === run.id) this.activeRunId = undefined
-  }
-
-  controller(runId: string): AbortController {
-    const existing = this.controllers.get(runId)
-    if (existing) return existing
-    const created = new AbortController()
-    this.controllers.set(runId, created)
-    return created
-  }
-
-  cancel(runId: string): RunSnapshot | undefined {
-    const run = this.runs.get(runId)
-    if (!run) return undefined
-    this.controllers.get(runId)?.abort()
-    this.checkpoints.get(runId)?.reject(new Error("Workflow cancelled"))
-    this.checkpoints.delete(runId)
-    for (const [sessionID, agent] of this.agents) {
-      if (agent.runId !== runId) continue
-      agent.reject(new Error("Workflow cancelled"))
-      this.agents.delete(sessionID)
-    }
-    const cancelled: RunSnapshot = { ...run, status: "cancelled", error: "Workflow cancelled" }
-    this.put(cancelled)
-    return cancelled
   }
 }

@@ -14,7 +14,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@opencode/plugin": "^2.0.11",
-        "zod": "^4.1.8",
+        "effect": "4.0.0-rc.112",
       },
       "devDependencies": {
         "@opentui/core": "0.5.10",

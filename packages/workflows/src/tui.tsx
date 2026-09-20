@@ -6,7 +6,7 @@ import { Workflows } from "./rpc.ts"
 export default Plugin.define({
   id: "phall.workflows.cli",
   setup(context) {
-    const rpc = context.client.rpc(Workflows)
+    const rpc = context.client.rpc(Workflows as any)
     const [active, setActive] = context.storage.memory("active-run", {
       initial: { run: null as RunSnapshot | null },
     })
@@ -17,7 +17,7 @@ export default Plugin.define({
       })
     })
 
-    void rpc.status({}).then((result) => {
+    void rpc.status?.({})?.then((result: { run?: RunSnapshot }) => {
       if (result.run) {
         setActive((draft) => {
           draft.run = result.run as RunSnapshot

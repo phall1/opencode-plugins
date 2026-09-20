@@ -1,70 +1,71 @@
 import { Rpc } from "@opencode/plugin/rpc"
-import { z } from "zod"
+import { Schema } from "effect"
 
-const Run = z.object({
-  id: z.string(),
-  workflow: z.string(),
-  status: z.enum(["running", "waiting", "done", "failed", "cancelled"]),
-  cursor: z.string(),
-  input: z.unknown(),
-  outputs: z.record(z.string(), z.unknown()),
-  error: z.string().optional(),
-  nodes: z.array(
-    z.object({
-      id: z.string(),
-      type: z.string(),
-      status: z.string(),
-    }),
-  ),
+const Node = Schema.Struct({
+  id: Schema.String,
+  type: Schema.String,
+  status: Schema.String,
 })
 
-const WorkflowSummary = z.object({
-  name: z.string(),
-  startAt: z.string(),
-  nodes: z.array(z.string()),
+export const Run = Schema.Struct({
+  id: Schema.String,
+  workflow: Schema.String,
+  status: Schema.Literals(["running", "waiting", "done", "failed", "cancelled"]),
+  cursor: Schema.String,
+  input: Schema.Unknown,
+  outputs: Schema.Record(Schema.String, Schema.Unknown),
+  error: Schema.optional(Schema.String),
+  nodes: Schema.Array(Node),
+})
+
+const WorkflowSummary = Schema.Struct({
+  name: Schema.String,
+  startAt: Schema.String,
+  nodes: Schema.Array(Schema.String),
 })
 
 export const Workflows = Rpc.define({
   id: "phall.workflows",
   methods: {
     list: {
-      input: z.object({}),
-      output: z.object({ workflows: z.array(WorkflowSummary) }),
+      input: Schema.Struct({}),
+      output: Schema.Struct({ workflows: Schema.Array(WorkflowSummary) }),
     },
     start: {
-      input: z.object({
-        name: z.string(),
-        task: z.string().optional(),
-        sessionID: z.string().optional(),
+      input: Schema.Struct({
+        name: Schema.String,
+        task: Schema.optional(Schema.String),
+        sessionID: Schema.optional(Schema.String),
+        input: Schema.optional(Schema.Unknown),
       }),
-      output: z.object({ run: Run }),
+      output: Schema.Struct({ run: Run }),
       errors: {
-        not_found: z.object({ name: z.string() }),
-        busy: z.object({ runId: z.string() }),
+        not_found: Schema.Struct({ name: Schema.String }),
+        busy: Schema.Struct({ runId: Schema.String }),
       },
     },
     status: {
-      input: z.object({ runId: z.string().optional() }),
-      output: z.object({ run: Run.optional() }),
+      input: Schema.Struct({ runId: Schema.optional(Schema.String) }),
+      output: Schema.Struct({ run: Schema.optional(Run) }),
     },
     cancel: {
-      input: z.object({ runId: z.string().optional() }),
-      output: z.object({ run: Run.optional() }),
+      input: Schema.Struct({ runId: Schema.optional(Schema.String) }),
+      output: Schema.Struct({ run: Schema.optional(Run) }),
     },
     answer: {
-      input: z.object({
-        value: z.unknown(),
-        runId: z.string().optional(),
+      input: Schema.Struct({
+        value: Schema.Unknown,
+        runId: Schema.optional(Schema.String),
       }),
-      output: z.object({ run: Run }),
+      output: Schema.Struct({ run: Run }),
       errors: {
-        not_waiting: z.object({ runId: z.string() }),
+        not_waiting: Schema.Struct({ runId: Schema.String }),
       },
     },
   },
   events: {
     updated: {
-      schema: z.object({ run: Run }),
+      schema: Schema.Struct({ run: Run }),
     },
   },
 })

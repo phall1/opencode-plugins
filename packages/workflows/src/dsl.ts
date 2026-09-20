@@ -36,7 +36,12 @@ export type CheckpointNode = {
   prompt: string | ((ctx: NodeCtx) => string | Promise<string>)
 }
 
-export type WorkflowNode = ComputeNode | AgentNode | DecisionNode | CheckpointNode
+export type WaitNode = {
+  type: "wait"
+  ms: number | ((ctx: NodeCtx) => number)
+}
+
+export type WorkflowNode = ComputeNode | AgentNode | DecisionNode | CheckpointNode | WaitNode
 
 export type Edge = {
   from: string
@@ -44,11 +49,19 @@ export type Edge = {
   when?: (ctx: NodeCtx & { output: unknown }) => boolean
 }
 
+export type IncludeSpec = {
+  workflow: Workflow
+  input: (ctx: NodeCtx) => unknown
+}
+
 export type Workflow = {
   name: string
   startAt: string
   nodes: Record<string, WorkflowNode>
   edges: readonly Edge[]
+  includes?: Record<string, IncludeSpec>
+  exits?: Record<string, { from: string }>
+  maxSteps?: number
 }
 
 export function compute(spec: { run: ComputeNode["run"] }): ComputeNode {
@@ -77,15 +90,21 @@ export function checkpoint(spec: Omit<CheckpointNode, "type">): CheckpointNode {
   return { type: "checkpoint", prompt: spec.prompt }
 }
 
+export function wait(spec: { ms: WaitNode["ms"] }): WaitNode {
+  return { type: "wait", ms: spec.ms }
+}
+
+export function includeWorkflow(workflow: Workflow, spec: { input: IncludeSpec["input"] }): IncludeSpec {
+  return { workflow, input: spec.input }
+}
+
 export function defineWorkflow<W extends Workflow>(workflow: W): W {
-  if (!workflow.name.trim()) {
-    throw new Error("Workflow name is required")
-  }
+  if (!workflow.name.trim()) throw new Error("Workflow name is required")
   if (RESERVED_WORKFLOW_NAMES.has(workflow.name)) {
     throw new Error(`Workflow name "${workflow.name}" is reserved`)
   }
-  if (!workflow.nodes[workflow.startAt]) {
-    throw new Error(`startAt "${workflow.startAt}" is not a node in "${workflow.name}"`)
+  if (!hasStart(workflow)) {
+    throw new Error(`startAt "${workflow.startAt}" is not a node or include in "${workflow.name}"`)
   }
   return workflow
 }
@@ -107,4 +126,8 @@ export async function resolvePrompt(
   ctx: NodeCtx,
 ): Promise<string> {
   return typeof prompt === "string" ? prompt : prompt(ctx)
+}
+
+function hasStart(workflow: Workflow): boolean {
+  return Boolean(workflow.nodes[workflow.startAt] || workflow.includes?.[workflow.startAt])
 }

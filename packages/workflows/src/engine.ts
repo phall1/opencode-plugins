@@ -1,3 +1,4 @@
+import { Effect } from "effect"
 import { resolvePrompt, type NodeCtx, type Workflow, type WorkflowNode } from "./dsl.ts"
 
 export type RunStatus = "running" | "waiting" | "done" | "failed" | "cancelled"
@@ -6,7 +7,7 @@ export type NodeRunStatus = "pending" | "running" | "done" | "failed" | "waiting
 
 export type NodeSnapshot = {
   id: string
-  type: WorkflowNode["type"]
+  type: WorkflowNode["type"] | "include"
   status: NodeRunStatus
 }
 
@@ -40,9 +41,10 @@ export type CheckpointRequest = {
 }
 
 export type WorkflowHost = {
-  runAgent(request: AgentRequest, signal: AbortSignal): Promise<unknown>
-  runDecision(request: DecisionRequest, signal: AbortSignal): Promise<string>
-  checkpoint(request: CheckpointRequest, signal: AbortSignal): Promise<unknown>
+  runAgent: (request: AgentRequest) => Effect.Effect<unknown, Error>
+  runDecision: (request: DecisionRequest) => Effect.Effect<string, Error>
+  checkpoint: (request: CheckpointRequest) => Effect.Effect<unknown, Error>
+  wait: (ms: number) => Effect.Effect<void, Error>
 }
 
 export type RunEvent =
@@ -53,10 +55,17 @@ export type RunEvent =
   | { type: "run.finished"; run: RunSnapshot }
   | { type: "run.failed"; run: RunSnapshot }
 
-export type RunEventHandler = (event: RunEvent) => void
-
 type MutableRun = RunSnapshot & {
   nodeStatus: Record<string, NodeRunStatus>
+  steps: number
+}
+
+export type RunOptions = {
+  workflow: Workflow
+  input?: unknown
+  host: WorkflowHost
+  runId?: string
+  onEvent?: (event: RunEvent) => Effect.Effect<void>
 }
 
 export function createRunId(): string {
@@ -64,9 +73,7 @@ export function createRunId(): string {
 }
 
 export function createRun(workflow: Workflow, input: unknown, id = createRunId()): MutableRun {
-  const nodeStatus = Object.fromEntries(
-    Object.keys(workflow.nodes).map((nodeId) => [nodeId, "pending" as NodeRunStatus]),
-  )
+  const nodeStatus = Object.fromEntries(nodeIds(workflow).map((nodeId) => [nodeId, "pending" as NodeRunStatus]))
   return {
     id,
     workflow: workflow.name,
@@ -75,112 +82,159 @@ export function createRun(workflow: Workflow, input: unknown, id = createRunId()
     input,
     outputs: {},
     nodeStatus,
+    steps: 0,
     nodes: snapshots(workflow, nodeStatus),
   }
 }
 
-export async function runWorkflow(options: {
-  workflow: Workflow
-  input?: unknown
-  host: WorkflowHost
-  signal?: AbortSignal
-  runId?: string
-  onEvent?: RunEventHandler
-}): Promise<RunSnapshot> {
-  const run = createRun(options.workflow, options.input ?? {}, options.runId)
-  const signal = options.signal ?? new AbortController().signal
-  const emit = (type: RunEvent["type"]) => {
-    refresh(run, options.workflow)
-    options.onEvent?.({ type, run: snapshot(run) })
-  }
+export const runWorkflow = (options: RunOptions): Effect.Effect<RunSnapshot> =>
+  Effect.gen(function* () {
+    const run = createRun(options.workflow, options.input ?? {}, options.runId)
+    const emit = makeEmit(run, options)
+    yield* emit("run.started")
+    return yield* Effect.gen(function* () {
+      while (run.status === "running") {
+        yield* step(run, options, emit)
+      }
+      return snapshot(run)
+    }).pipe(
+      Effect.catch((error) => failRun(run, options.workflow, emit, error)),
+      Effect.onInterrupt(() =>
+        Effect.sync(() => {
+          run.status = "cancelled"
+          run.error = "Workflow cancelled"
+        }),
+      ),
+    )
+  })
 
-  emit("run.started")
-  try {
-    while (run.status === "running") {
-      throwIfAborted(signal)
-      await step(run, options.workflow, options.host, signal, emit)
-    }
-  } catch (error) {
-    if (run.status === "cancelled") return snapshot(run)
-    run.status = "failed"
-    run.error = messageOf(error)
-    run.nodeStatus[run.cursor] = "failed"
-    emit("run.failed")
-  }
-  return snapshot(run)
-}
-
-async function step(
+const step = (
   run: MutableRun,
-  workflow: Workflow,
-  host: WorkflowHost,
-  signal: AbortSignal,
-  emit: (type: RunEvent["type"]) => void,
-): Promise<void> {
-  const nodeId = run.cursor
-  const node = workflow.nodes[nodeId]
-  if (!node) throw new Error(`Unknown node "${nodeId}" in workflow "${workflow.name}"`)
+  options: RunOptions,
+  emit: (type: RunEvent["type"]) => Effect.Effect<void>,
+): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    run.steps += 1
+    const limit = options.workflow.maxSteps ?? 100
+    if (run.steps > limit) {
+      return yield* Effect.fail(new Error(`maxSteps (${limit}) exceeded`))
+    }
+    const include = options.workflow.includes?.[run.cursor]
+    if (include) {
+      yield* stepInclude(run, options, emit, include.workflow, include.input)
+      return
+    }
+    yield* stepNode(run, options, emit)
+  })
 
-  run.nodeStatus[nodeId] = node.type === "checkpoint" ? "waiting" : "running"
-  emit(node.type === "checkpoint" ? "run.waiting" : "node.started")
+const stepNode = (
+  run: MutableRun,
+  options: RunOptions,
+  emit: (type: RunEvent["type"]) => Effect.Effect<void>,
+): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    const nodeId = run.cursor
+    const node = options.workflow.nodes[nodeId]
+    if (!node) {
+      return yield* Effect.fail(new Error(`Unknown node "${nodeId}" in workflow "${options.workflow.name}"`))
+    }
 
-  const ctx: NodeCtx = { input: run.input, outputs: run.outputs }
-  const output = await executeNode(node, nodeId, ctx, host, signal)
-  run.outputs[nodeId] = output
-  run.nodeStatus[nodeId] = "done"
-  emit("node.finished")
+    run.nodeStatus[nodeId] = node.type === "checkpoint" ? "waiting" : "running"
+    yield* emit(node.type === "checkpoint" ? "run.waiting" : "node.started")
 
-  const next = nextNode(workflow, nodeId, { ...ctx, output })
-  if (!next) {
-    run.status = "done"
-    emit("run.finished")
-    return
-  }
-  run.cursor = next
-}
+    const ctx: NodeCtx = { input: run.input, outputs: run.outputs }
+    const output = yield* executeNode(node, nodeId, ctx, options.host)
+    run.outputs[nodeId] = output
+    run.nodeStatus[nodeId] = "done"
+    yield* emit("node.finished")
+    yield* advance(run, options, emit, { ...ctx, output })
+  })
 
-async function executeNode(
+const stepInclude = (
+  run: MutableRun,
+  options: RunOptions,
+  emit: (type: RunEvent["type"]) => Effect.Effect<void>,
+  child: Workflow,
+  inputOf: (ctx: NodeCtx) => unknown,
+): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    const mount = run.cursor
+    run.nodeStatus[mount] = "running"
+    yield* emit("node.started")
+    const ctx: NodeCtx = { input: run.input, outputs: run.outputs }
+    const childRun = yield* runWorkflow({
+      workflow: child,
+      input: inputOf(ctx),
+      host: options.host,
+    })
+    if (childRun.status !== "done") {
+      run.status = childRun.status
+      run.error = childRun.error
+      run.nodeStatus[mount] = "failed"
+      yield* emit(childRun.status === "cancelled" ? "run.failed" : "run.failed")
+      return
+    }
+    const exit = exitOf(child, childRun)
+    const output = { choice: exit, exit, outputs: childRun.outputs }
+    run.outputs[mount] = output
+    run.nodeStatus[mount] = "done"
+    yield* emit("node.finished")
+    yield* advance(run, options, emit, { ...ctx, output })
+  })
+
+const advance = (
+  run: MutableRun,
+  options: RunOptions,
+  emit: (type: RunEvent["type"]) => Effect.Effect<void>,
+  ctx: NodeCtx & { output: unknown },
+): Effect.Effect<void> =>
+  Effect.sync(() => {
+    const next = nextNode(options.workflow, run.cursor, ctx)
+    if (!next) {
+      run.status = "done"
+      return
+    }
+    run.cursor = next
+  }).pipe(Effect.flatMap(() => (run.status === "done" ? emit("run.finished") : Effect.void)))
+
+const executeNode = (
   node: WorkflowNode,
   nodeId: string,
   ctx: NodeCtx,
   host: WorkflowHost,
-  signal: AbortSignal,
-): Promise<unknown> {
+): Effect.Effect<unknown, Error> => {
   switch (node.type) {
     case "compute":
-      return node.run(ctx)
+      return Effect.tryPromise({
+        try: async () => node.run(ctx),
+        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+      })
     case "agent":
-      return host.runAgent(
-        {
-          nodeId,
-          prompt: await resolvePrompt(node.prompt, ctx),
-          output: node.output,
-          session: node.session,
-        },
-        signal,
+      return Effect.promise(() => resolvePrompt(node.prompt, ctx)).pipe(
+        Effect.flatMap((prompt) =>
+          host.runAgent({ nodeId, prompt, output: node.output, session: node.session }),
+        ),
       )
-    case "decision": {
-      const choice = await host.runDecision(
-        {
-          nodeId,
-          prompt: await resolvePrompt(node.prompt, ctx),
-          choices: node.choices,
-        },
-        signal,
+    case "decision":
+      return Effect.promise(() => resolvePrompt(node.prompt, ctx)).pipe(
+        Effect.flatMap((prompt) => host.runDecision({ nodeId, prompt, choices: node.choices })),
+        Effect.flatMap((choice) => {
+          if (!node.choices.includes(choice)) {
+            return Effect.fail(
+              new Error(`Decision "${nodeId}" returned "${choice}", expected one of: ${node.choices.join(", ")}`),
+            )
+          }
+          return Effect.succeed({ choice })
+        }),
       )
-      if (!node.choices.includes(choice)) {
-        throw new Error(`Decision "${nodeId}" returned "${choice}", expected one of: ${node.choices.join(", ")}`)
-      }
-      return { choice }
-    }
     case "checkpoint":
-      return host.checkpoint(
-        {
-          nodeId,
-          prompt: await resolvePrompt(node.prompt, ctx),
-        },
-        signal,
+      return Effect.promise(() => resolvePrompt(node.prompt, ctx)).pipe(
+        Effect.flatMap((prompt) => host.checkpoint({ nodeId, prompt })),
       )
+    case "wait": {
+      const ms = typeof node.ms === "number" ? node.ms : node.ms(ctx)
+      return host.wait(ms).pipe(Effect.as({ waitedMs: ms }))
+    }
   }
 }
 
@@ -199,9 +253,7 @@ export function nextNode(
   if (matched) return matched.to
 
   const fallback = candidates.filter((edge) => !edge.when)
-  if (fallback.length > 1) {
-    throw new Error(`Node "${from}" has multiple default edges`)
-  }
+  if (fallback.length > 1) throw new Error(`Node "${from}" has multiple default edges`)
   if (fallback.length === 1) return fallback[0]?.to
   if (named.length + direct.length > 0 && !matched) {
     throw new Error(`Node "${from}" has edges but none matched`)
@@ -209,10 +261,39 @@ export function nextNode(
   return undefined
 }
 
-function choiceOf(output: unknown): string | undefined {
-  if (typeof output !== "object" || output === null) return undefined
-  const choice = (output as { choice?: unknown }).choice
-  return typeof choice === "string" ? choice : undefined
+export function exitOf(workflow: Workflow, child: RunSnapshot): string {
+  if (!workflow.exits) return "done"
+  for (const [name, exit] of Object.entries(workflow.exits)) {
+    if (exit.from === child.cursor) return name
+  }
+  return "done"
+}
+
+function makeEmit(run: MutableRun, options: RunOptions) {
+  return (type: RunEvent["type"]) => {
+    refresh(run, options.workflow)
+    const event = { type, run: snapshot(run) } as RunEvent
+    return options.onEvent ? options.onEvent(event) : Effect.void
+  }
+}
+
+const failRun = (
+  run: MutableRun,
+  workflow: Workflow,
+  emit: (type: RunEvent["type"]) => Effect.Effect<void>,
+  error: unknown,
+): Effect.Effect<RunSnapshot> =>
+  Effect.gen(function* () {
+    run.status = "failed"
+    run.error = error instanceof Error ? error.message : String(error)
+    run.nodeStatus[run.cursor] = "failed"
+    refresh(run, workflow)
+    yield* emit("run.failed")
+    return snapshot(run)
+  })
+
+function nodeIds(workflow: Workflow): string[] {
+  return [...Object.keys(workflow.nodes), ...Object.keys(workflow.includes ?? {})]
 }
 
 function refresh(run: MutableRun, workflow: Workflow): void {
@@ -220,15 +301,21 @@ function refresh(run: MutableRun, workflow: Workflow): void {
 }
 
 function snapshots(workflow: Workflow, nodeStatus: Record<string, NodeRunStatus>): NodeSnapshot[] {
-  return Object.entries(workflow.nodes).map(([id, node]) => ({
+  const nodes = Object.entries(workflow.nodes).map(([id, node]) => ({
     id,
     type: node.type,
     status: nodeStatus[id] ?? "pending",
   }))
+  const includes = Object.keys(workflow.includes ?? {}).map((id) => ({
+    id,
+    type: "include" as const,
+    status: nodeStatus[id] ?? "pending",
+  }))
+  return [...nodes, ...includes]
 }
 
 function snapshot(run: MutableRun): RunSnapshot {
-  const { nodeStatus: _, ...rest } = run
+  const { nodeStatus: _, steps: __, ...rest } = run
   return {
     ...rest,
     outputs: { ...run.outputs },
@@ -236,13 +323,8 @@ function snapshot(run: MutableRun): RunSnapshot {
   }
 }
 
-function throwIfAborted(signal: AbortSignal): void {
-  if (!signal.aborted) return
-  const error = new Error("Workflow cancelled")
-  error.name = "AbortError"
-  throw error
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+function choiceOf(output: unknown): string | undefined {
+  if (typeof output !== "object" || output === null) return undefined
+  const choice = (output as { choice?: unknown }).choice
+  return typeof choice === "string" ? choice : undefined
 }

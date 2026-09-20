@@ -1,15 +1,20 @@
 import { readdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { isWorkflow, type Workflow } from "./dsl.ts"
 
 const FILE_PATTERN = /\.workflow\.(ts|js|mts|mjs)$/
+
+export function builtinWorkflowDir(): string {
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), "workflows")
+}
 
 export async function discoverWorkflows(projectDirectory: string): Promise<Workflow[]> {
   const dirs = [
     path.join(projectDirectory, ".opencode", "workflows"),
     path.join(homedir(), ".config", "opencode", "workflows"),
+    builtinWorkflowDir(),
   ]
   const found: Workflow[] = []
   const names = new Set<string>()

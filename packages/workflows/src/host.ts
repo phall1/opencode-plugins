@@ -1,8 +1,13 @@
-import { Plugin } from "@opencode/plugin"
+import { Plugin } from "@opencode/plugin/effect"
+import { Deferred, Duration, Effect } from "effect"
 import type { AgentRequest, CheckpointRequest, DecisionRequest, WorkflowHost } from "./engine.ts"
 import type { RunRegistry } from "./registry.ts"
 
 type Context = Plugin.Context
+
+function asSessionID(id: string) {
+  return id as never
+}
 
 export function createHost(options: {
   ctx: Context
@@ -13,98 +18,67 @@ export function createHost(options: {
   const { ctx, registry, runId, originSessionID } = options
 
   return {
-    async runAgent(request: AgentRequest, signal: AbortSignal) {
-      const sessionID = await sessionFor(request, ctx, originSessionID)
-      return new Promise((resolve, reject) => {
-        const onAbort = () => reject(abortError())
-        signal.addEventListener("abort", onAbort, { once: true })
-        registry.agents.set(sessionID, {
-          runId,
-          nodeId: request.nodeId,
-          resolve: (value) => {
-            signal.removeEventListener("abort", onAbort)
-            registry.agents.delete(sessionID)
-            resolve(value)
-          },
-          reject: (error) => {
-            signal.removeEventListener("abort", onAbort)
-            registry.agents.delete(sessionID)
-            reject(error)
-          },
-        })
-        void (async () => {
-          try {
-            await ctx.session.prompt({
-              sessionID,
-              text: agentPrompt(request),
-            })
-            await ctx.session.wait({ sessionID })
-            if (registry.agents.has(sessionID)) {
-              const output = await readSessionOutput(ctx, sessionID, request.output)
-              registry.agents.get(sessionID)?.resolve(output)
-            }
-          } catch (error) {
-            registry.agents.get(sessionID)?.reject(error instanceof Error ? error : new Error(String(error)))
-          }
-        })()
-      })
-    },
-
-    async runDecision(request: DecisionRequest, signal: AbortSignal) {
-      const listed = request.choices.map((choice) => `"${choice}"`).join(", ")
-      const result = await ctx.generate.text(
-        {
-          prompt: [
-            request.prompt,
-            "",
-            `Reply with exactly one of these choices: ${listed}.`,
-            'Return JSON only: {"choice":"..."}',
-          ].join("\n"),
-        },
-        { signal },
-      )
-      const choice = parseChoice(result.text, request.choices)
-      if (!choice) {
-        throw new Error(`Could not parse a decision from: ${truncate(result.text)}`)
-      }
-      return choice
-    },
-
-    checkpoint(_request: CheckpointRequest, signal: AbortSignal) {
-      return new Promise((resolve, reject) => {
-        const onAbort = () => {
-          registry.checkpoints.delete(runId)
-          reject(abortError())
+    runAgent: (request) =>
+      Effect.gen(function* () {
+        const id = yield* sessionFor(request, ctx, originSessionID)
+        const deferred = yield* Deferred.make<unknown, Error>()
+        registry.agents.set(id, { runId, nodeId: request.nodeId, deferred })
+        yield* ctx.session.prompt({ sessionID: asSessionID(id), text: agentPrompt(request) }).pipe(Effect.orDie)
+        yield* ctx.session.wait({ sessionID: asSessionID(id) }).pipe(Effect.orDie)
+        if (registry.agents.has(id)) {
+          const output = yield* readSessionOutput(ctx, id, request.output)
+          yield* Deferred.succeed(deferred, output)
+          registry.agents.delete(id)
         }
-        signal.addEventListener("abort", onAbort, { once: true })
-        registry.checkpoints.set(runId, {
-          runId,
-          resolve: (value) => {
-            signal.removeEventListener("abort", onAbort)
-            registry.checkpoints.delete(runId)
-            resolve(value)
-          },
-          reject: (error) => {
-            signal.removeEventListener("abort", onAbort)
-            registry.checkpoints.delete(runId)
-            reject(error)
-          },
-        })
-      })
-    },
+        return yield* Deferred.await(deferred)
+      }),
+
+    runDecision: (request) =>
+      Effect.gen(function* () {
+        const listed = request.choices.map((choice) => `"${choice}"`).join(", ")
+        const result = yield* ctx.generate
+          .text({
+            prompt: [
+              request.prompt,
+              "",
+              `Reply with exactly one of these choices: ${listed}.`,
+              'Return JSON only: {"choice":"..."}',
+            ].join("\n"),
+          })
+          .pipe(Effect.orDie)
+        const choice = parseChoice(result.text, request.choices)
+        if (!choice) {
+          return yield* Effect.fail(new Error(`Could not parse a decision from: ${truncate(result.text)}`))
+        }
+        return choice
+      }),
+
+    checkpoint: (_request: CheckpointRequest) =>
+      Effect.gen(function* () {
+        const deferred = yield* Deferred.make<unknown, Error>()
+        registry.checkpoints.set(runId, deferred)
+        return yield* Deferred.await(deferred)
+      }),
+
+    wait: (ms) => Effect.sleep(Duration.millis(ms)),
   }
 }
 
-async function sessionFor(request: AgentRequest, ctx: Context, originSessionID?: string): Promise<string> {
-  if (request.session === "origin") {
-    if (!originSessionID) throw new Error("Origin session agent steps need a sessionID")
-    return originSessionID
-  }
-  const created = await ctx.session.create({
-    title: `workflow:${request.nodeId}`,
+const sessionFor = (
+  request: AgentRequest,
+  ctx: Context,
+  originSessionID?: string,
+): Effect.Effect<string, Error> =>
+  Effect.gen(function* () {
+    if (request.session === "origin") {
+      if (!originSessionID) {
+        return yield* Effect.fail(new Error("Origin session agent steps need a sessionID"))
+      }
+      return originSessionID
+    }
+    const created = yield* ctx.session.create({ title: `workflow:${request.nodeId}` }).pipe(Effect.orDie)
+    return created.id
   })
-  return created.id
-}
 
 function agentPrompt(request: AgentRequest): string {
   if (request.output === "assistant") {
@@ -113,16 +87,17 @@ function agentPrompt(request: AgentRequest): string {
   return `${request.prompt}\n\nWhen finished, call the workflow tool with action "submit" and a JSON result.`
 }
 
-async function readSessionOutput(
+const readSessionOutput = (
   ctx: Context,
   sessionID: string,
   output: AgentRequest["output"],
-): Promise<unknown> {
-  const messages = await ctx.session.context({ sessionID })
-  const text = lastAssistantText(messages)
-  if (output === "assistant") return text
-  return parseJson(text) ?? { text }
-}
+): Effect.Effect<unknown> =>
+  Effect.gen(function* () {
+    const messages = yield* ctx.session.context({ sessionID: asSessionID(sessionID) }).pipe(Effect.orDie)
+    const text = lastAssistantText(messages as readonly unknown[])
+    if (output === "assistant") return text
+    return parseJson(text) ?? { text }
+  })
 
 function lastAssistantText(messages: readonly unknown[]): string {
   for (let index = messages.length - 1; index >= 0; index--) {
@@ -161,12 +136,6 @@ function parseJson(text: string): unknown {
   } catch {
     return undefined
   }
-}
-
-function abortError(): Error {
-  const error = new Error("Workflow cancelled")
-  error.name = "AbortError"
-  return error
 }
 
 function truncate(text: string): string {
