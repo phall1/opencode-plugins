@@ -40,30 +40,36 @@ export default Plugin.define({
       }
     })
 
-    context.keymap.layer(() => ({
-      mode: "global",
-      commands: [
-        {
-          id: "phall.workflows.run",
-          title: "Workflow",
-          group: "Workflows",
-          palette: true,
-          slash: { name: "workflow", arguments: true },
-          run: (input) => {
-            void handleSlash(context, rpc, input)
-          },
-        },
-        {
-          id: "phall.workflows.panel",
-          title: "Workflow graph",
-          group: "Workflows",
-          slash: { name: "workflow-graph" },
-          run: () => {
-            context.ui.panel.open("phall.workflows")
-          },
-        },
-      ],
-    }))
+    const unslotCommands = context.ui.slot({
+      append: "app",
+      render: () => {
+        context.keymap.layer(() => ({
+          mode: "global",
+          commands: [
+            {
+              id: "phall.workflows.run",
+              title: "Workflow",
+              group: "Workflows",
+              palette: true,
+              slash: { name: "workflow" },
+              run: () => {
+                void handleSlash(context, rpc)
+              },
+            },
+            {
+              id: "phall.workflows.panel",
+              title: "Workflow graph",
+              group: "Workflows",
+              slash: { name: "workflow-graph" },
+              run: () => {
+                context.ui.panel.open("phall.workflows")
+              },
+            },
+          ],
+        }))
+        return null
+      },
+    })
 
     const unslotStatus = context.ui.slot({
       append: "prompt.footer.status",
@@ -81,6 +87,7 @@ export default Plugin.define({
 
     return () => {
       stop()
+      unslotCommands()
       unslotStatus()
       unslotPanel()
     }
