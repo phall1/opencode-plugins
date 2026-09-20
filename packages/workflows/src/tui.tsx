@@ -121,7 +121,7 @@ async function runWorkflowCommand(
   try {
     const [head, ...rest] = (input ?? "").trim().split(/\s+/).filter(Boolean)
     if (head === "status") {
-      const run = (await rpc.status({ runId: rest[0] }, opts)).run
+      const run = (await rpc.status(rest[0] ? { runId: rest[0] } : {}, opts)).run
       context.ui.panel.open("phall.workflows")
       await context.ui.dialog.alert({
         title: run ? `${run.workflow} · ${run.status}` : "Workflow",
@@ -161,7 +161,8 @@ async function runWorkflowCommand(
       return
     }
 
-    const started = await rpc.start({ name, task: rest.join(" ") || undefined, sessionID }, opts)
+    const task = rest.join(" ")
+    const started = await rpc.start({ name, ...(task ? { task } : {}), sessionID }, opts)
     const [, update] = context.storage.memory("active-run", {
       initial: { run: null as RunSnapshot | null },
     })

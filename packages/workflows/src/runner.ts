@@ -68,7 +68,7 @@ export const cancelRun = (registry: RunRegistry, runId: string): Effect.Effect<R
       yield* Deferred.fail(agent.deferred, cancelledError())
       registry.agents.delete(sessionID)
     }
-    const cancelled: RunSnapshot = { ...run, status: "cancelled", error: "Workflow cancelled" }
+    const cancelled = toSnapshot({ ...run, status: "cancelled", error: "Workflow cancelled" })
     registry.put(cancelled)
     return cancelled
   })

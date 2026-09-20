@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { checkpoint, compute, decision, defineWorkflow, includeWorkflow, wait } from "../src/dsl.ts"
-import { nextNode, runWorkflow, type WorkflowHost } from "../src/engine.ts"
+import { nextNode, runWorkflow, toSnapshot, type WorkflowHost } from "../src/engine.ts"
 
 const host: WorkflowHost = {
   runAgent: (request) => Effect.succeed({ reply: request.prompt }),
@@ -31,6 +31,8 @@ describe("runWorkflow", () => {
     expect(result.nodes[0]?.status).toBe("done")
     expect(result).not.toHaveProperty("nodeStatus")
     expect(result).not.toHaveProperty("steps")
+    expect(result).not.toHaveProperty("error")
+    expect(Schema.encodeUnknownExit(Schema.Json)(toSnapshot(result))._tag).toBe("Success")
   })
 
   test("chains compute nodes through edges", async () => {

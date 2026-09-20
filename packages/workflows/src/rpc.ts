@@ -14,7 +14,7 @@ export const Run = Schema.Struct({
   cursor: Schema.String,
   input: Schema.Unknown,
   outputs: Schema.Record(Schema.String, Schema.Unknown),
-  error: Schema.optional(Schema.String),
+  error: Schema.optionalKey(Schema.String),
   nodes: Schema.Array(Node),
 })
 
@@ -22,6 +22,14 @@ const WorkflowSummary = Schema.Struct({
   name: Schema.String,
   startAt: Schema.String,
   nodes: Schema.Array(Schema.String),
+})
+
+const RunId = Schema.Struct({
+  runId: Schema.optionalKey(Schema.String),
+})
+
+const MaybeRun = Schema.Struct({
+  run: Schema.optionalKey(Run),
 })
 
 export const Workflows = Rpc.define({
@@ -34,9 +42,9 @@ export const Workflows = Rpc.define({
     start: {
       input: Schema.Struct({
         name: Schema.String,
-        task: Schema.optional(Schema.String),
-        sessionID: Schema.optional(Schema.String),
-        input: Schema.optional(Schema.Unknown),
+        task: Schema.optionalKey(Schema.String),
+        sessionID: Schema.optionalKey(Schema.String),
+        input: Schema.optionalKey(Schema.Unknown),
       }),
       output: Schema.Struct({ run: Run }),
       errors: {
@@ -45,17 +53,17 @@ export const Workflows = Rpc.define({
       },
     },
     status: {
-      input: Schema.Struct({ runId: Schema.optional(Schema.String) }),
-      output: Schema.Struct({ run: Schema.optional(Run) }),
+      input: RunId,
+      output: MaybeRun,
     },
     cancel: {
-      input: Schema.Struct({ runId: Schema.optional(Schema.String) }),
-      output: Schema.Struct({ run: Schema.optional(Run) }),
+      input: RunId,
+      output: MaybeRun,
     },
     answer: {
       input: Schema.Struct({
         value: Schema.Unknown,
-        runId: Schema.optional(Schema.String),
+        runId: Schema.optionalKey(Schema.String),
       }),
       output: Schema.Struct({ run: Run }),
       errors: {

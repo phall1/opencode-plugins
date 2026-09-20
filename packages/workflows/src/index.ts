@@ -75,12 +75,12 @@ export default Plugin.define({
             const run = yield* launch(workflow, mergeInput(input), input.sessionID)
             return { run }
           }),
-        status: (input) => Effect.succeed({ run: registry.get(input.runId) }),
+        status: (input) => Effect.succeed(maybeRun(registry.get(input.runId))),
         cancel: (input) =>
           Effect.gen(function* () {
             const run = registry.get(input.runId)
-            if (!run) return { run: undefined }
-            return { run: yield* cancelRun(registry, run.id) }
+            if (!run) return {}
+            return maybeRun(yield* cancelRun(registry, run.id))
           }),
         answer: (input, context) =>
           Effect.gen(function* () {
@@ -170,11 +170,14 @@ export default Plugin.define({
     }).pipe(Effect.orDie),
 })
 
+function maybeRun(run: RunSnapshot | undefined): { run: RunSnapshot } | {} {
+  return run ? { run } : {}
+}
+
 function mergeInput(input: { task?: string; input?: unknown }): unknown {
-  if (input.input && typeof input.input === "object") {
-    return { task: input.task, ...(input.input as Record<string, unknown>) }
-  }
-  return { task: input.task }
+  const extra = input.input && typeof input.input === "object" ? { ...(input.input as Record<string, unknown>) } : {}
+  if (input.task !== undefined) extra.task = input.task
+  return extra
 }
 
 function skillPath(id: string): typeof Skill.Info.Type.path {

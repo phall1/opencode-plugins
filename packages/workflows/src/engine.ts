@@ -325,16 +325,18 @@ function snapshots(workflow: Workflow, nodeStatus: Record<string, NodeRunStatus>
 }
 
 export function toSnapshot(run: MutableRun | RunSnapshot): RunSnapshot {
-  return {
-    id: run.id,
-    workflow: run.workflow,
-    status: run.status,
-    cursor: run.cursor,
-    input: run.input,
-    outputs: { ...run.outputs },
-    error: run.error,
-    nodes: run.nodes.map((node) => ({ ...node })),
-  }
+  return JSON.parse(
+    JSON.stringify({
+      id: run.id,
+      workflow: run.workflow,
+      status: run.status,
+      cursor: run.cursor,
+      input: run.input ?? null,
+      outputs: run.outputs,
+      ...(run.error ? { error: run.error } : {}),
+      nodes: run.nodes.map((node) => ({ id: node.id, type: node.type, status: node.status })),
+    }),
+  ) as RunSnapshot
 }
 
 function snapshot(run: MutableRun): RunSnapshot {
