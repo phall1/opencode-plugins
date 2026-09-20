@@ -10,11 +10,13 @@ type WorkflowSummary = {
   nodes: string[]
 }
 
+type CallOpts = { location?: { directory?: string } }
+
 type Rpc = {
-  list: (input?: object) => Promise<{ workflows: WorkflowSummary[] }>
-  start: (input: { name: string; task?: string; sessionID?: string }) => Promise<{ run: RunSnapshot }>
-  status: (input?: { runId?: string }) => Promise<{ run?: RunSnapshot }>
-  cancel: (input?: { runId?: string }) => Promise<{ run?: RunSnapshot }>
+  list: (input?: object, options?: CallOpts) => Promise<{ workflows: WorkflowSummary[] }>
+  start: (input: { name: string; task?: string; sessionID?: string }, options?: CallOpts) => Promise<{ run: RunSnapshot }>
+  status: (input?: { runId?: string }, options?: CallOpts) => Promise<{ run?: RunSnapshot }>
+  cancel: (input?: { runId?: string }, options?: CallOpts) => Promise<{ run?: RunSnapshot }>
   events: { on: (name: string, handler: (event: { data: { run: RunSnapshot } }) => void) => () => void }
 }
 
@@ -32,7 +34,7 @@ export default Plugin.define({
       })
     })
 
-    void rpc.status({}).then((result) => {
+    void rpc.status({}, callOpts(context)).then((result) => {
       if (result.run) {
         setActive((draft) => {
           draft.run = result.run ?? null
@@ -114,9 +116,10 @@ async function handleSlash(
   input?: string,
 ): Promise<void> {
   try {
+    const opts = callOpts(context)
     const [head, ...rest] = (input ?? "").trim().split(/\s+/).filter(Boolean)
     if (head === "status") {
-      const run = (await rpc.status({ runId: rest[0] })).run
+      const run = (await rpc.status({ runId: rest[0] }, opts)).run
       context.ui.panel.open("phall.workflows")
       await context.ui.dialog.alert({
         title: run ? `${run.workflow} · ${run.status}` : "Workflow",
@@ -125,7 +128,7 @@ async function handleSlash(
       return
     }
     if (head === "cancel") {
-      const run = (await rpc.cancel({ runId: rest[0] })).run
+      const run = (await rpc.cancel({ runId: rest[0] }, opts)).run
       context.ui.toast.show({
         message: run ? `${run.workflow} cancelled` : "No run to cancel",
         variant: run ? "success" : "warning",
@@ -133,7 +136,7 @@ async function handleSlash(
       return
     }
 
-    const workflows = (await rpc.list({})).workflows ?? []
+    const workflows = (await rpc.list({}, opts)).workflows ?? []
     const name = head && head !== "list" ? head : await pickWorkflow(context, workflows)
     if (!name) return
 
@@ -146,18 +149,21 @@ async function handleSlash(
       return
     }
 
-    const started = await rpc.start({
-      name,
-      task: rest.join(" ") || undefined,
-      sessionID,
-    })
+    const started = await rpc.start(
+      {
+        name,
+        task: rest.join(" ") || undefined,
+        sessionID,
+      },
+      opts,
+    )
     setActiveRun(context, started.run)
     context.ui.panel.open("phall.workflows")
     context.ui.toast.show({ title: name, message: started.run.status, variant: "success" })
   } catch (error) {
     context.ui.toast.show({
       title: "Workflow",
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
       variant: "error",
     })
   }
@@ -179,6 +185,26 @@ async function pickWorkflow(
       description: workflow.nodes.join(" → "),
     })),
   })
+}
+
+function callOpts(context: ReturnType<typeof usePlugin>): CallOpts {
+  const directory = context.location?.directory ?? context.data.location.default()?.directory
+  return directory ? { location: { directory } } : {}
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === "object" && error !== null) {
+    const body = error as { type?: unknown; message?: unknown }
+    if (typeof body.message === "string") {
+      return typeof body.type === "string" ? `${body.type}: ${body.message}` : body.message
+    }
+  }
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return "Unknown workflow error"
+  }
 }
 
 function sessionIDOf(context: ReturnType<typeof usePlugin>): string | undefined {

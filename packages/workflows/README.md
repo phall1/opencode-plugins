@@ -65,6 +65,9 @@ export default defineWorkflow({
 ```
 
 `agent` defaults to a child session. Use `session: "origin"` when the step
-must keep the current conversation (autoplan does this). `decision` uses
-`generate.text`. `wait` sleeps on the OpenCode service. `includeWorkflow`
-runs a child graph and routes on named exits.
+must keep the current conversation (autoplan does this). `decision` is a Jev
+Choice when `TYPESAFE_API_KEY` is set, otherwise `generate.text`. Below
+`minConfidence` the graph gets `uncertain`. `wait` sleeps on the OpenCode
+service. `includeWorkflow` runs a child graph and routes on named exits.
+
+See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).

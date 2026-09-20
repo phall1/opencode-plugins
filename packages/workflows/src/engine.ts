@@ -33,6 +33,8 @@ export type DecisionRequest = {
   nodeId: string
   prompt: string
   choices: readonly string[]
+  state?: unknown
+  minConfidence?: number
 }
 
 export type CheckpointRequest = {
@@ -217,9 +219,17 @@ const executeNode = (
       )
     case "decision":
       return Effect.promise(() => resolvePrompt(node.prompt, ctx)).pipe(
-        Effect.flatMap((prompt) => host.runDecision({ nodeId, prompt, choices: node.choices })),
+        Effect.flatMap((prompt) =>
+          host.runDecision({
+            nodeId,
+            prompt,
+            choices: node.choices,
+            state: { input: ctx.input, outputs: ctx.outputs },
+            minConfidence: node.minConfidence,
+          }),
+        ),
         Effect.flatMap((choice) => {
-          if (!node.choices.includes(choice)) {
+          if (choice !== "uncertain" && !node.choices.includes(choice)) {
             return Effect.fail(
               new Error(`Decision "${nodeId}" returned "${choice}", expected one of: ${node.choices.join(", ")}`),
             )

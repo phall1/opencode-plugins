@@ -29,6 +29,7 @@ export type DecisionNode = {
   type: "decision"
   prompt: string | ((ctx: NodeCtx) => string | Promise<string>)
   choices: readonly string[]
+  minConfidence?: number
 }
 
 export type CheckpointNode = {
@@ -83,7 +84,12 @@ export function agent(
 }
 
 export function decision(spec: Omit<DecisionNode, "type">): DecisionNode {
-  return { type: "decision", prompt: spec.prompt, choices: spec.choices }
+  return {
+    type: "decision",
+    prompt: spec.prompt,
+    choices: spec.choices,
+    minConfidence: spec.minConfidence,
+  }
 }
 
 export function checkpoint(spec: Omit<CheckpointNode, "type">): CheckpointNode {

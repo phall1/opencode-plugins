@@ -165,6 +165,28 @@ describe("runWorkflow", () => {
     expect(result.outputs.done).toMatchObject({ exit: "ready" })
   })
 
+  test("routes uncertain when the host returns that choice", async () => {
+    const workflow = defineWorkflow({
+      name: "gated",
+      startAt: "route",
+      nodes: {
+        route: decision({ prompt: "go?", choices: ["fix", "blocked"], minConfidence: 0.9 }),
+        ask: compute({ run: () => "human" }),
+      },
+      edges: [
+        { from: "route.fix", to: "ask" },
+        { from: "route.blocked", to: "ask" },
+        { from: "route.uncertain", to: "ask" },
+      ],
+    })
+    const result = await run({
+      workflow,
+      host: { ...host, runDecision: () => Effect.succeed("uncertain") },
+    })
+    expect(result.status).toBe("done")
+    expect(result.outputs.ask).toBe("human")
+  })
+
   test("wait nodes call the host", async () => {
     let waited = 0
     const workflow = defineWorkflow({

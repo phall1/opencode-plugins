@@ -1,6 +1,7 @@
 import { Plugin } from "@opencode/plugin/effect"
 import { Deferred, Duration, Effect } from "effect"
 import type { AgentRequest, CheckpointRequest, DecisionRequest, WorkflowHost } from "./engine.ts"
+import { applyConfidence, judgeChoice, type Judgment } from "./judge.ts"
 import type { RunRegistry } from "./registry.ts"
 
 type Context = Plugin.Context
@@ -35,22 +36,16 @@ export function createHost(options: {
 
     runDecision: (request) =>
       Effect.gen(function* () {
-        const listed = request.choices.map((choice) => `"${choice}"`).join(", ")
-        const result = yield* ctx.generate
-          .text({
-            prompt: [
-              request.prompt,
-              "",
-              `Reply with exactly one of these choices: ${listed}.`,
-              'Return JSON only: {"choice":"..."}',
-            ].join("\n"),
-          })
-          .pipe(Effect.orDie)
-        const choice = parseChoice(result.text, request.choices)
-        if (!choice) {
-          return yield* Effect.fail(new Error(`Could not parse a decision from: ${truncate(result.text)}`))
+        const judged = yield* judgeChoice({
+          prompt: request.prompt,
+          choices: request.choices,
+          state: request.state ?? { prompt: request.prompt },
+        }).pipe(Effect.catch(() => generateChoice(ctx, request)))
+        const applied = applyConfidence(judged, request.minConfidence)
+        if (applied.choice !== "uncertain" && !request.choices.includes(applied.choice)) {
+          return yield* Effect.fail(new Error(`Decision returned "${applied.choice}"`))
         }
-        return choice
+        return applied.choice
       }),
 
     checkpoint: (_request: CheckpointRequest) =>
@@ -78,6 +73,31 @@ const sessionFor = (
     }
     const created = yield* ctx.session.create({ title: `workflow:${request.nodeId}` }).pipe(Effect.orDie)
     return created.id
+  })
+
+const generateChoice = (ctx: Context, request: DecisionRequest): Effect.Effect<Judgment, Error> =>
+  Effect.gen(function* () {
+    const listed = request.choices.map((choice) => `"${choice}"`).join(", ")
+    const result = yield* ctx.generate
+      .text({
+        prompt: [
+          request.prompt,
+          "",
+          `Reply with exactly one of these choices: ${listed}.`,
+          'Return JSON only: {"choice":"..."}',
+        ].join("\n"),
+      })
+      .pipe(Effect.orDie)
+    const choice = parseChoice(result.text, request.choices)
+    if (!choice) {
+      return yield* Effect.fail(new Error(`Could not parse a decision from: ${truncate(result.text)}`))
+    }
+    return {
+      choice,
+      confidence: 1,
+      probabilities: Object.fromEntries(request.choices.map((item) => [item, item === choice ? 1 : 0])),
+      source: "generate" as const,
+    }
   })
 
 function agentPrompt(request: AgentRequest): string {
