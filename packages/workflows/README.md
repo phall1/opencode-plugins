@@ -41,6 +41,7 @@ The model uses the `workflow` tool (`list`, `start`, `status`, `cancel`,
 | --- | --- |
 | `ping` | Compute-only. Finishes in this chat so you can see a `done` run. |
 | `echo` | One agent step in this session |
+| `wire` | Add this plugin to ~/dotfiles OpenCode config, apply, prove it loads |
 | `autoplan` | Intent → candidates → choose → plan → summary |
 | `autodoc` | Record an existing plan in docs |
 | `autoimplement` | Implement, verify, fix loop |
@@ -67,8 +68,8 @@ export default defineWorkflow({
 })
 ```
 
-`agent` defaults to a child session. Use `session: "origin"` when the step
-must keep the current conversation (autoplan does this). `decision` is a Jev
+`agent` defaults to this conversation, like Pi. Use `session: "child"` for a
+hidden session. `decision` is a Jev
 Choice when `TYPESAFE_API_KEY` is set, otherwise `generate.text`. Below
 `minConfidence` the graph gets `uncertain`. `wait` sleeps on the OpenCode
 service. `includeWorkflow` runs a child graph and routes on named exits.

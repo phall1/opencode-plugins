@@ -40,7 +40,10 @@ export function createHost(options: {
           prompt: request.prompt,
           choices: request.choices,
           state: request.state ?? { prompt: request.prompt },
-        }).pipe(Effect.catch(() => generateChoice(ctx, request)))
+        }).pipe(
+          Effect.timeout(Duration.millis(3000)),
+          Effect.catch(() => generateChoice(ctx, request).pipe(Effect.timeout(Duration.millis(15_000)))),
+        )
         const applied = applyConfidence(judged, request.minConfidence)
         if (applied.choice !== "uncertain" && !request.choices.includes(applied.choice)) {
           return yield* Effect.fail(new Error(`Decision returned "${applied.choice}"`))
