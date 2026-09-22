@@ -101,7 +101,7 @@ export const handleTool = (options: {
     return `Unknown action "${options.action}"`
   })
 
-function parseAnswer(text: string): unknown {
+export function parseAnswer(text: string): unknown {
   if (!text) return {}
   try {
     return JSON.parse(text)

@@ -29,7 +29,7 @@ The CLI loads `./tui` from the same package. Do not add it to `cli.json`.
 /workflow status
 /workflow cancel
 /workflow answer { ... }
-/workflow-graph                   session panel (esc closes)
+/workflow-graph                   session panel
 ```
 
 The model uses the `workflow` tool (`list`, `start`, `status`, `cancel`,
@@ -70,8 +70,7 @@ export default defineWorkflow({
 
 `/workflow` kicks off a run and returns. Agent steps default to a **child
 session**, so this chat stays yours. Use `session: "origin"` only when a step
-must read this conversation (autoplan capture). The graph panel is the
-progress UI, not a hijacked turn. `decision` is a Jev
+must read this conversation (autoplan capture). The graph panel is the progress UI, not a hijacked turn. The side panel is the step list. `f` opens the Merman graph when the run is too long to draw beside it. ↑↓ select, enter opens a child session, `a` answers a checkpoint, `x` stops. The footer chip opens it. `decision` is a Jev
 Choice when `TYPESAFE_API_KEY` is set, otherwise `generate.text`. Below
 `minConfidence` the graph gets `uncertain`. `wait` sleeps on the OpenCode
 service. `includeWorkflow` runs a child graph and routes on named exits.

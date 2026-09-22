@@ -10,7 +10,9 @@ const run: RunSnapshot = {
   cursor: "pong",
   input: { task: "hi" },
   outputs: { pong: { ok: true, echo: "hi" } },
+  startedAt: 1,
   nodes: [{ id: "pong", type: "compute", status: "done" }],
+  edges: [],
 }
 
 describe("formatRun", () => {

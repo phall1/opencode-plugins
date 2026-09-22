@@ -5,6 +5,17 @@ const Node = Schema.Struct({
   id: Schema.String,
   type: Schema.String,
   status: Schema.String,
+  startedAt: Schema.optionalKey(Schema.Number),
+  finishedAt: Schema.optionalKey(Schema.Number),
+  sessionID: Schema.optionalKey(Schema.String),
+  detail: Schema.optionalKey(Schema.String),
+  choices: Schema.optionalKey(Schema.Array(Schema.String)),
+})
+
+const Edge = Schema.Struct({
+  from: Schema.String,
+  to: Schema.String,
+  label: Schema.optionalKey(Schema.String),
 })
 
 export const Run = Schema.Struct({
@@ -12,10 +23,12 @@ export const Run = Schema.Struct({
   workflow: Schema.String,
   status: Schema.Literals(["running", "waiting", "done", "failed", "cancelled"]),
   cursor: Schema.String,
+  startedAt: Schema.Number,
   input: Schema.Unknown,
   outputs: Schema.Record(Schema.String, Schema.Unknown),
   error: Schema.optionalKey(Schema.String),
   nodes: Schema.Array(Node),
+  edges: Schema.Array(Edge),
 })
 
 const WorkflowSummary = Schema.Struct({

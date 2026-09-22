@@ -80,7 +80,9 @@ export default Plugin.define({
           Effect.gen(function* () {
             const run = registry.get(input.runId)
             if (!run) return {}
-            return maybeRun(yield* cancelRun(registry, run.id))
+            const cancelled = yield* cancelRun(registry, run.id)
+            if (cancelled) yield* emit(cancelled)
+            return maybeRun(cancelled)
           }),
         answer: (input, context) =>
           Effect.gen(function* () {

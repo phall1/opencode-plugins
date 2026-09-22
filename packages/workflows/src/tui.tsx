@@ -1,19 +1,20 @@
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
-import type { PanelInput } from "@opencode/plugin/tui/context"
-import { For, Show } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import type { RunSnapshot } from "./engine.ts"
-import { formatGraph, formatRun, glyph } from "./format.ts"
 import { Workflows } from "./rpc.ts"
+import { WorkflowPanel, type WorkflowRpc } from "./panel.tsx"
+import { footerText } from "./view.ts"
 
 type CallOpts = { location?: { directory?: string } }
 
-type Rpc = {
+type Rpc = WorkflowRpc & {
   list: (input?: object, options?: CallOpts) => Promise<{ workflows: Array<{ name: string; nodes: string[] }> }>
   start: (input: { name: string; task?: string; sessionID?: string }, options?: CallOpts) => Promise<{ run: RunSnapshot }>
   status: (input?: { runId?: string }, options?: CallOpts) => Promise<{ run?: RunSnapshot }>
-  cancel: (input?: { runId?: string }, options?: CallOpts) => Promise<{ run?: RunSnapshot }>
   events: { on: (name: string, handler: (event: { data: { run: RunSnapshot } }) => void) => () => void }
 }
+
+const PANEL = "phall.workflows"
 
 export default Plugin.define({
   id: "phall.workflows.cli",
@@ -36,11 +37,10 @@ export default Plugin.define({
 
     void rpc.status({}, callOpts(context)).then(
       (result) => {
-        if (result.run) {
-          setActive((draft) => {
-            draft.run = result.run ?? null
-          })
-        }
+        if (!result.run) return
+        setActive((draft) => {
+          draft.run = result.run ?? null
+        })
       },
       () => undefined,
     )
@@ -58,8 +58,8 @@ export default Plugin.define({
     const unslotPanel = context.ui.slot({
       append: "session.panel",
       render: (panel) => (
-        <Show when={panel.name === "phall.workflows"}>
-          <Graph run={active.run} panel={panel} />
+        <Show when={panel.name === PANEL}>
+          <WorkflowPanel run={active.run} panel={panel} rpc={rpc} />
         </Show>
       ),
     })
@@ -96,20 +96,51 @@ function WorkflowCommands(props: { rpc: Rpc }) {
         group: "Workflows",
         palette: true,
         slash: { name: "workflow-graph" },
-        run: () => {
-          const current = context.ui.panel.current()
-          if (current?.name === "phall.workflows") {
-            context.ui.panel.close()
-            return
-          }
-          if (!context.ui.panel.open("phall.workflows")) {
-            context.ui.toast.show({ message: "Open a session first", variant: "warning" })
-          }
-        },
+        run: () => togglePanel(context),
       },
     ],
   }))
   return null
+}
+
+function Status(props: { run: RunSnapshot | null }) {
+  const context = usePlugin()
+  const [hover, setHover] = createSignal(false)
+  return (
+    <Show when={props.run}>
+      <box
+        onMouseOver={() => setHover(true)}
+        onMouseOut={() => setHover(false)}
+        onMouseUp={() => togglePanel(context)}
+      >
+        <text fg={hover() ? context.theme.text.default : footerColor(context.theme, props.run!.status)} wrapMode="none">
+          {footerText(props.run!)}
+        </text>
+      </box>
+    </Show>
+  )
+}
+
+function footerColor(theme: ReturnType<typeof usePlugin>["theme"], status: string) {
+  if (status === "waiting") return theme.text.status.question
+  if (status === "failed" || status === "cancelled") return theme.text.feedback.error.default
+  if (status === "done") return theme.text.subdued
+  return theme.text.status.running
+}
+
+function togglePanel(context: ReturnType<typeof usePlugin>) {
+  if (context.ui.panel.current()?.name === PANEL) {
+    context.ui.panel.close()
+    return
+  }
+  showPanel(context)
+}
+
+function showPanel(context: ReturnType<typeof usePlugin>) {
+  if (context.ui.panel.current()?.name === PANEL) return
+  if (!context.ui.panel.open(PANEL)) {
+    context.ui.toast.show({ message: "Open a session first", variant: "warning" })
+  }
 }
 
 async function runWorkflowCommand(
@@ -121,18 +152,13 @@ async function runWorkflowCommand(
   try {
     const [head, ...rest] = (input ?? "").trim().split(/\s+/).filter(Boolean)
     if (head === "status") {
-      const run = (await rpc.status(rest[0] ? { runId: rest[0] } : {}, opts)).run
-      context.ui.panel.open("phall.workflows")
-      await context.ui.dialog.alert({
-        title: run ? `${run.workflow} · ${run.status}` : "Workflow",
-        message: run ? formatRun(run) : "No workflow run.",
-      })
+      showPanel(context)
       return
     }
     if (head === "cancel") {
       const run = (await rpc.cancel({ runId: rest[0] }, opts)).run
       context.ui.toast.show({
-        message: run ? `${run.workflow} cancelled` : "No run to cancel",
+        message: run ? `${run.workflow} stopped` : "No run to stop",
         variant: run ? "success" : "warning",
       })
       return
@@ -147,7 +173,7 @@ async function runWorkflowCommand(
             options: workflows.map((workflow) => ({
               title: workflow.name,
               value: workflow.name,
-              description: workflow.nodes.join(" → "),
+              description: workflow.nodes.join(", "),
             })),
           })
     if (!name) return
@@ -163,13 +189,8 @@ async function runWorkflowCommand(
 
     const task = rest.join(" ")
     const started = await rpc.start({ name, ...(task ? { task } : {}), sessionID }, opts)
-    const [, update] = context.storage.memory("active-run", {
-      initial: { run: null as RunSnapshot | null },
-    })
-    update((draft) => {
-      draft.run = started.run
-    })
-    context.ui.panel.open("phall.workflows")
+    remember(context, started.run)
+    showPanel(context)
     context.ui.toast.show({
       title: started.run.workflow,
       message: started.run.status === "done" ? "done" : `${started.run.status} · ${started.run.cursor}`,
@@ -182,6 +203,15 @@ async function runWorkflowCommand(
       variant: "error",
     })
   }
+}
+
+function remember(context: ReturnType<typeof usePlugin>, run: RunSnapshot) {
+  const [, update] = context.storage.memory("active-run", {
+    initial: { run: null as RunSnapshot | null },
+  })
+  update((draft) => {
+    draft.run = run
+  })
 }
 
 function callOpts(context: ReturnType<typeof usePlugin>): CallOpts {
@@ -208,51 +238,4 @@ function errorMessage(error: unknown): string {
   } catch {
     return "Unknown workflow error"
   }
-}
-
-function Status(props: { run: RunSnapshot | null }) {
-  const context = usePlugin()
-  return (
-    <Show when={props.run}>
-      <text fg={context.theme.text.muted}>
-        {glyph(props.run?.status ?? "")} {props.run?.workflow} · {props.run?.cursor}
-      </text>
-    </Show>
-  )
-}
-
-function Graph(props: { run: RunSnapshot | null; panel: PanelInput }) {
-  const context = usePlugin()
-  context.keymap.layer(() => ({
-    enabled: () => props.panel.focused,
-    commands: [
-      {
-        id: "phall.workflows.panel.close",
-        title: "Close workflow graph",
-        bind: "escape",
-        run: () => props.panel.close(),
-      },
-    ],
-  }))
-  return (
-    <box paddingLeft={1} paddingRight={1} paddingTop={1} gap={1}>
-      <text fg={context.theme.text.muted}>kicked off · this chat is free · esc closes</text>
-      <Show when={props.run} fallback={<text fg={context.theme.text.muted}>No run yet. /workflow ping hi</text>}>
-        <text fg={context.theme.text.base}>
-          {glyph(props.run?.status ?? "")} {props.run?.workflow} · {props.run?.status}
-        </text>
-        <text fg={context.theme.text.base}>{formatGraph(props.run!)}</text>
-        <For each={props.run?.nodes ?? []}>
-          {(node) => (
-            <text fg={context.theme.text.base}>
-              {glyph(node.status)} {node.id} · {node.type}
-            </text>
-          )}
-        </For>
-        <Show when={props.run?.error}>
-          <text fg={context.theme.text.muted}>{props.run?.error}</text>
-        </Show>
-      </Show>
-    </box>
-  )
 }

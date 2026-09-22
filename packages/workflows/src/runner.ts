@@ -25,15 +25,22 @@ export const startRun = (options: {
 }): Effect.Effect<RunSnapshot> =>
   Effect.gen(function* () {
     const runId = createRunId()
+    const sessions = new Map<string, string>()
+    const publish = (run: RunSnapshot) => options.emit(stampSessions(run, sessions))
     const host = createHost({
       ctx: options.ctx,
       registry: options.registry,
       runId,
       originSessionID: options.originSessionID,
+      onAgentSession: (nodeId, sessionID) => {
+        sessions.set(nodeId, sessionID)
+        const current = options.registry.get(runId)
+        if (current) void Effect.runPromise(publish(current))
+      },
     })
     const initial = toSnapshot(createRun(options.workflow, options.input, runId))
     options.registry.put(initial)
-    yield* options.emit(initial)
+    yield* publish(initial)
 
     const live = { on: false }
     const fiber = yield* runWorkflow({
@@ -41,9 +48,8 @@ export const startRun = (options: {
       input: options.input,
       host,
       runId,
-      onEvent: (event) =>
-        options.emit(event.run).pipe(Effect.andThen(maybeNarrate(options, live, event))),
-    }).pipe(Effect.tap(options.emit), Effect.forkDetach({ startImmediately: true }))
+      onEvent: (event) => publish(event.run).pipe(Effect.andThen(maybeNarrate(options, live, event))),
+    }).pipe(Effect.tap(publish), Effect.forkDetach({ startImmediately: true }))
     options.registry.fibers.set(runId, fiber)
 
     yield* waitWhileRunning(options.registry, runId)
@@ -102,6 +108,17 @@ const maybeNarrate = (
       Effect.asVoid,
       Effect.catch(() => Effect.void),
     )
+}
+
+function stampSessions(run: RunSnapshot, sessions: Map<string, string>): RunSnapshot {
+  if (sessions.size === 0) return run
+  return {
+    ...run,
+    nodes: run.nodes.map((node) => {
+      const sessionID = sessions.get(node.id)
+      return sessionID ? { ...node, sessionID } : node
+    }),
+  }
 }
 
 function cancelledError(): Error {

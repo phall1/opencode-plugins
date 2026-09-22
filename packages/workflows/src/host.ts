@@ -15,6 +15,7 @@ export function createHost(options: {
   registry: RunRegistry
   runId: string
   originSessionID?: string
+  onAgentSession?: (nodeId: string, sessionID: string) => void
 }): WorkflowHost {
   const { ctx, registry, runId, originSessionID } = options
 
@@ -22,6 +23,7 @@ export function createHost(options: {
     runAgent: (request) =>
       Effect.gen(function* () {
         const id = yield* sessionFor(request, ctx, originSessionID)
+        if (request.session !== "origin") options.onAgentSession?.(request.nodeId, id)
         const deferred = yield* Deferred.make<unknown, Error>()
         registry.agents.set(id, { runId, nodeId: request.nodeId, deferred })
         yield* ctx.session.prompt({ sessionID: asSessionID(id), text: agentPrompt(request) }).pipe(Effect.orDie)

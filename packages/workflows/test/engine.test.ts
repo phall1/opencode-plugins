@@ -49,6 +49,8 @@ describe("runWorkflow", () => {
     const result = await run({ workflow, host })
     expect(result.status).toBe("done")
     expect(result.outputs).toEqual({ one: 1, two: 2 })
+    expect(result.edges).toEqual([{ from: "one", to: "two" }])
+    expect(result.nodes.every((node) => (node.finishedAt ?? 0) >= (node.startedAt ?? 0))).toBe(true)
   })
 
   test("routes decision exits by choice name", async () => {

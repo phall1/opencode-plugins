@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { resolvePrompt, type NodeCtx, type Workflow, type WorkflowNode } from "./dsl.ts"
+import { resolvePrompt, type Edge, type NodeCtx, type Workflow, type WorkflowNode } from "./dsl.ts"
 
 export type RunStatus = "running" | "waiting" | "done" | "failed" | "cancelled"
 
@@ -9,6 +9,17 @@ export type NodeSnapshot = {
   id: string
   type: WorkflowNode["type"] | "include"
   status: NodeRunStatus
+  startedAt?: number
+  finishedAt?: number
+  sessionID?: string
+  detail?: string
+  choices?: string[]
+}
+
+export type EdgeSnapshot = {
+  from: string
+  to: string
+  label?: string
 }
 
 export type RunSnapshot = {
@@ -16,10 +27,12 @@ export type RunSnapshot = {
   workflow: string
   status: RunStatus
   cursor: string
+  startedAt: number
   input: unknown
   outputs: Record<string, unknown>
   error?: string
   nodes: NodeSnapshot[]
+  edges: EdgeSnapshot[]
 }
 
 export type AgentRequest = {
@@ -57,8 +70,17 @@ export type RunEvent =
   | { type: "run.finished"; run: RunSnapshot }
   | { type: "run.failed"; run: RunSnapshot }
 
+type NodeMeta = {
+  startedAt?: number
+  finishedAt?: number
+  sessionID?: string
+  detail?: string
+  choices?: string[]
+}
+
 type MutableRun = RunSnapshot & {
   nodeStatus: Record<string, NodeRunStatus>
+  nodeMeta: Record<string, NodeMeta>
   steps: number
 }
 
@@ -76,16 +98,20 @@ export function createRunId(): string {
 
 export function createRun(workflow: Workflow, input: unknown, id = createRunId()): MutableRun {
   const nodeStatus = Object.fromEntries(nodeIds(workflow).map((nodeId) => [nodeId, "pending" as NodeRunStatus]))
+  const nodeMeta: Record<string, NodeMeta> = {}
   return {
     id,
     workflow: workflow.name,
     status: "running",
     cursor: workflow.startAt,
+    startedAt: Date.now(),
     input,
     outputs: {},
     nodeStatus,
+    nodeMeta,
     steps: 0,
-    nodes: snapshots(workflow, nodeStatus),
+    nodes: snapshots(workflow, nodeStatus, nodeMeta),
+    edges: edgeSnapshots(workflow),
   }
 }
 
@@ -141,13 +167,15 @@ const stepNode = (
       return yield* Effect.fail(new Error(`Unknown node "${nodeId}" in workflow "${options.workflow.name}"`))
     }
 
+    const ctx: NodeCtx = { input: run.input, outputs: run.outputs }
+    run.nodeMeta[nodeId] = yield* beginMeta(node, ctx)
     run.nodeStatus[nodeId] = node.type === "checkpoint" ? "waiting" : "running"
     yield* emit(node.type === "checkpoint" ? "run.waiting" : "node.started")
 
-    const ctx: NodeCtx = { input: run.input, outputs: run.outputs }
     const output = yield* executeNode(node, nodeId, ctx, options.host)
     run.outputs[nodeId] = output
     run.nodeStatus[nodeId] = "done"
+    run.nodeMeta[nodeId] = finishMeta(run.nodeMeta[nodeId], output)
     yield* emit("node.finished")
     yield* advance(run, options, emit, { ...ctx, output })
   })
@@ -297,6 +325,11 @@ const failRun = (
     run.status = "failed"
     run.error = error instanceof Error ? error.message : String(error)
     run.nodeStatus[run.cursor] = "failed"
+    run.nodeMeta[run.cursor] = {
+      ...run.nodeMeta[run.cursor],
+      finishedAt: Date.now(),
+      detail: run.error,
+    }
     refresh(run, workflow)
     yield* emit("run.failed")
     return snapshot(run)
@@ -307,36 +340,87 @@ function nodeIds(workflow: Workflow): string[] {
 }
 
 function refresh(run: MutableRun, workflow: Workflow): void {
-  run.nodes = snapshots(workflow, run.nodeStatus)
+  run.nodes = snapshots(workflow, run.nodeStatus, run.nodeMeta)
 }
 
-function snapshots(workflow: Workflow, nodeStatus: Record<string, NodeRunStatus>): NodeSnapshot[] {
-  const nodes = Object.entries(workflow.nodes).map(([id, node]) => ({
-    id,
-    type: node.type,
-    status: nodeStatus[id] ?? "pending",
-  }))
-  const includes = Object.keys(workflow.includes ?? {}).map((id) => ({
-    id,
-    type: "include" as const,
-    status: nodeStatus[id] ?? "pending",
-  }))
+function snapshots(
+  workflow: Workflow,
+  nodeStatus: Record<string, NodeRunStatus>,
+  nodeMeta: Record<string, NodeMeta>,
+): NodeSnapshot[] {
+  const nodes = Object.entries(workflow.nodes).map(([id, node]) =>
+    publicNode(id, node.type, nodeStatus[id] ?? "pending", nodeMeta[id]),
+  )
+  const includes = Object.keys(workflow.includes ?? {}).map((id) =>
+    publicNode(id, "include", nodeStatus[id] ?? "pending", nodeMeta[id]),
+  )
   return [...nodes, ...includes]
 }
 
+function publicNode(
+  id: string,
+  type: NodeSnapshot["type"],
+  status: NodeRunStatus,
+  meta: NodeMeta | undefined,
+): NodeSnapshot {
+  return {
+    id,
+    type,
+    status,
+    ...(meta?.startedAt ? { startedAt: meta.startedAt } : {}),
+    ...(meta?.finishedAt ? { finishedAt: meta.finishedAt } : {}),
+    ...(meta?.sessionID ? { sessionID: meta.sessionID } : {}),
+    ...(meta?.detail ? { detail: meta.detail } : {}),
+    ...(meta?.choices && meta.choices.length > 0 ? { choices: [...meta.choices] } : {}),
+  }
+}
+
+export function edgeSnapshots(workflow: Workflow): EdgeSnapshot[] {
+  const ids = new Set(nodeIds(workflow))
+  return workflow.edges.map((edge) => labeledEdge(edge, ids))
+}
+
+function labeledEdge(edge: Edge, ids: Set<string>): EdgeSnapshot {
+  const dot = edge.from.indexOf(".")
+  if (dot <= 0) return { from: edge.from, to: edge.to }
+  const from = edge.from.slice(0, dot)
+  if (!ids.has(from)) return { from: edge.from, to: edge.to }
+  return { from, to: edge.to, label: edge.from.slice(dot + 1) }
+}
+
+const beginMeta = (node: WorkflowNode, ctx: NodeCtx): Effect.Effect<NodeMeta, Error> =>
+  Effect.gen(function* () {
+    const meta: NodeMeta = { startedAt: Date.now() }
+    if (node.type === "decision") meta.choices = [...node.choices]
+    if (node.type === "checkpoint") {
+      meta.detail = yield* Effect.promise(() => resolvePrompt(node.prompt, ctx))
+    }
+    return meta
+  })
+
+function finishMeta(meta: NodeMeta | undefined, output: unknown): NodeMeta {
+  const choice = choiceOf(output)
+  return {
+    ...meta,
+    finishedAt: Date.now(),
+    ...(choice ? { detail: choice } : {}),
+  }
+}
+
 export function toSnapshot(run: MutableRun | RunSnapshot): RunSnapshot {
-  return JSON.parse(
-    JSON.stringify({
-      id: run.id,
-      workflow: run.workflow,
-      status: run.status,
-      cursor: run.cursor,
-      input: run.input ?? null,
-      outputs: run.outputs,
-      ...(run.error ? { error: run.error } : {}),
-      nodes: run.nodes.map((node) => ({ id: node.id, type: node.type, status: node.status })),
-    }),
-  ) as RunSnapshot
+  const meta = "nodeMeta" in run ? run.nodeMeta : undefined
+  return {
+    id: run.id,
+    workflow: run.workflow,
+    status: run.status,
+    cursor: run.cursor,
+    startedAt: run.startedAt,
+    input: run.input ?? null,
+    outputs: run.outputs,
+    ...(run.error ? { error: run.error } : {}),
+    nodes: run.nodes.map((node) => publicNode(node.id, node.type, node.status, { ...node, ...meta?.[node.id] })),
+    edges: run.edges ?? [],
+  }
 }
 
 function snapshot(run: MutableRun): RunSnapshot {
