@@ -20,4 +20,8 @@ describe("applyConfidence", () => {
   test("does not gate when minConfidence is omitted", () => {
     expect(applyConfidence(judgment("act", 0.1)).choice).toBe("act")
   })
+
+  test("uncalibrated fallback cannot pass a confidence gate", () => {
+    expect(applyConfidence({ ...judgment("act", 1), source: "generate" }, 0.65).choice).toBe("uncertain")
+  })
 })

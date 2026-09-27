@@ -14,6 +14,10 @@ export type NodeSnapshot = {
   sessionID?: string
   detail?: string
   choices?: string[]
+  prompt?: string
+  output?: unknown
+  decision?: { source: "jev" | "generate"; confidence: number; probabilities: Record<string, number> }
+  child?: RunSnapshot
 }
 
 export type EdgeSnapshot = {
@@ -37,6 +41,7 @@ export type RunSnapshot = {
 
 export type AgentRequest = {
   nodeId: string
+  path: string
   prompt: string
   output: "json" | "assistant"
   session: "child" | "origin"
@@ -57,7 +62,7 @@ export type CheckpointRequest = {
 
 export type WorkflowHost = {
   runAgent: (request: AgentRequest) => Effect.Effect<unknown, Error>
-  runDecision: (request: DecisionRequest) => Effect.Effect<string, Error>
+  runDecision: (request: DecisionRequest) => Effect.Effect<{ choice: string; source: "jev" | "generate"; confidence: number; probabilities: Record<string, number> }, Error>
   checkpoint: (request: CheckpointRequest) => Effect.Effect<unknown, Error>
   wait: (ms: number) => Effect.Effect<void, Error>
 }
@@ -65,6 +70,7 @@ export type WorkflowHost = {
 export type RunEvent =
   | { type: "run.started"; run: RunSnapshot }
   | { type: "node.started"; run: RunSnapshot }
+  | { type: "node.updated"; run: RunSnapshot }
   | { type: "node.finished"; run: RunSnapshot }
   | { type: "run.waiting"; run: RunSnapshot }
   | { type: "run.finished"; run: RunSnapshot }
@@ -76,6 +82,10 @@ type NodeMeta = {
   sessionID?: string
   detail?: string
   choices?: string[]
+  prompt?: string
+  output?: unknown
+  decision?: NodeSnapshot["decision"]
+  child?: RunSnapshot
 }
 
 type MutableRun = RunSnapshot & {
@@ -89,6 +99,7 @@ export type RunOptions = {
   input?: unknown
   host: WorkflowHost
   runId?: string
+  path?: string
   onEvent?: (event: RunEvent) => Effect.Effect<void>
 }
 
@@ -172,10 +183,15 @@ const stepNode = (
     run.nodeStatus[nodeId] = node.type === "checkpoint" ? "waiting" : "running"
     yield* emit(node.type === "checkpoint" ? "run.waiting" : "node.started")
 
-    const output = yield* executeNode(node, nodeId, ctx, options.host)
+    const result = yield* executeNode(node, nodeId, ctx, options.host, run.nodeMeta[nodeId].prompt, options.path ? `${options.path}.${nodeId}` : nodeId)
+    const output = node.type === "decision" ? { choice: (result as { choice: string }).choice } : result
     run.outputs[nodeId] = output
     run.nodeStatus[nodeId] = "done"
     run.nodeMeta[nodeId] = finishMeta(run.nodeMeta[nodeId], output)
+    if (node.type === "decision") {
+      const judged = result as NonNullable<NodeSnapshot["decision"]> & { choice: string }
+      run.nodeMeta[nodeId].decision = { source: judged.source, confidence: judged.confidence, probabilities: judged.probabilities }
+    }
     yield* emit("node.finished")
     yield* advance(run, options, emit, { ...ctx, output })
   })
@@ -189,25 +205,34 @@ const stepInclude = (
 ): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     const mount = run.cursor
+    run.nodeMeta[mount] = { startedAt: Date.now() }
     run.nodeStatus[mount] = "running"
     yield* emit("node.started")
     const ctx: NodeCtx = { input: run.input, outputs: run.outputs }
+    const childInput = yield* Effect.try({ try: () => inputOf(ctx), catch: asError })
     const childRun = yield* runWorkflow({
       workflow: child,
-      input: inputOf(ctx),
+      input: childInput,
       host: options.host,
+      path: options.path ? `${options.path}.${mount}` : mount,
+      onEvent: (event) => Effect.sync(() => {
+        run.nodeMeta[mount] = { ...run.nodeMeta[mount], child: event.run }
+      }).pipe(Effect.andThen(emit("node.updated"))),
     })
+    run.nodeMeta[mount] = { ...run.nodeMeta[mount], child: childRun }
     if (childRun.status !== "done") {
       run.status = childRun.status
       run.error = childRun.error
       run.nodeStatus[mount] = "failed"
+      run.nodeMeta[mount] = { ...run.nodeMeta[mount], finishedAt: Date.now(), detail: childRun.error }
       yield* emit(childRun.status === "cancelled" ? "run.failed" : "run.failed")
       return
     }
-    const exit = exitOf(child, childRun)
+    const exit = yield* Effect.try({ try: () => exitOf(child, childRun), catch: asError })
     const output = { choice: exit, exit, outputs: childRun.outputs }
     run.outputs[mount] = output
     run.nodeStatus[mount] = "done"
+    run.nodeMeta[mount] = finishMeta(run.nodeMeta[mount], output)
     yield* emit("node.finished")
     yield* advance(run, options, emit, { ...ctx, output })
   })
@@ -217,21 +242,23 @@ const advance = (
   options: RunOptions,
   emit: (type: RunEvent["type"]) => Effect.Effect<void>,
   ctx: NodeCtx & { output: unknown },
-): Effect.Effect<void> =>
-  Effect.sync(() => {
+): Effect.Effect<void, Error> =>
+  Effect.try({ try: () => {
     const next = nextNode(options.workflow, run.cursor, ctx)
     if (!next) {
       run.status = "done"
       return
     }
     run.cursor = next
-  }).pipe(Effect.flatMap(() => (run.status === "done" ? emit("run.finished") : Effect.void)))
+  }, catch: asError }).pipe(Effect.flatMap(() => (run.status === "done" ? emit("run.finished") : Effect.void)))
 
 const executeNode = (
   node: WorkflowNode,
   nodeId: string,
   ctx: NodeCtx,
   host: WorkflowHost,
+  prompt?: string,
+  path = nodeId,
 ): Effect.Effect<unknown, Error> => {
   switch (node.type) {
     case "compute":
@@ -240,35 +267,40 @@ const executeNode = (
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),
       })
     case "agent":
-      return Effect.promise(() => resolvePrompt(node.prompt, ctx)).pipe(
-        Effect.flatMap((prompt) =>
-          host.runAgent({ nodeId, prompt, output: node.output, session: node.session }),
-        ),
+      return host.runAgent({ nodeId, path, prompt: prompt!, output: node.output, session: node.session }).pipe(
+        Effect.flatMap((output) => {
+          if (node.output === "json" && (!output || typeof output !== "object" || Array.isArray(output))) {
+            return Effect.fail(new Error(`Agent "${nodeId}" did not return a JSON object`))
+          }
+          if (node.validate) return Effect.try({
+            try: () => {
+              if (!node.validate!(output)) throw new Error(`Agent "${nodeId}" returned an invalid result`)
+              return output
+            },
+            catch: asError,
+          })
+          return Effect.succeed(output)
+        }),
       )
     case "decision":
-      return Effect.promise(() => resolvePrompt(node.prompt, ctx)).pipe(
-        Effect.flatMap((prompt) =>
-          host.runDecision({
+      return host.runDecision({
             nodeId,
-            prompt,
+            prompt: prompt!,
             choices: node.choices,
             state: { input: ctx.input, outputs: ctx.outputs },
             minConfidence: node.minConfidence,
-          }),
-        ),
+          }).pipe(
         Effect.flatMap((choice) => {
-          if (choice !== "uncertain" && !node.choices.includes(choice)) {
+          if (choice.choice !== "uncertain" && !node.choices.includes(choice.choice)) {
             return Effect.fail(
-              new Error(`Decision "${nodeId}" returned "${choice}", expected one of: ${node.choices.join(", ")}`),
+              new Error(`Decision "${nodeId}" returned "${choice.choice}", expected one of: ${node.choices.join(", ")}`),
             )
           }
-          return Effect.succeed({ choice })
+          return Effect.succeed(choice)
         }),
       )
     case "checkpoint":
-      return Effect.promise(() => resolvePrompt(node.prompt, ctx)).pipe(
-        Effect.flatMap((prompt) => host.checkpoint({ nodeId, prompt })),
-      )
+      return host.checkpoint({ nodeId, prompt: prompt! })
     case "wait": {
       const ms = typeof node.ms === "number" ? node.ms : node.ms(ctx)
       return host.wait(ms).pipe(Effect.as({ waitedMs: ms }))
@@ -285,7 +317,12 @@ export function nextNode(
   const named = choice ? workflow.edges.filter((edge) => edge.from === `${from}.${choice}`) : []
   const direct = workflow.edges.filter((edge) => edge.from === from)
   const candidates = named.length > 0 ? named : direct
-  if (candidates.length === 0) return undefined
+  if (candidates.length === 0) {
+    if (workflow.nodes[from]?.type === "decision" || workflow.includes?.[from] || workflow.edges.some((edge) => edge.from === from || edge.from.startsWith(`${from}.`))) {
+      throw new Error(`No route from "${from}"${choice ? ` for choice "${choice}"` : ""}`)
+    }
+    return undefined
+  }
 
   const matched = candidates.find((edge) => (edge.when ? edge.when(ctx) : false))
   if (matched) return matched.to
@@ -304,7 +341,7 @@ export function exitOf(workflow: Workflow, child: RunSnapshot): string {
   for (const [name, exit] of Object.entries(workflow.exits)) {
     if (exit.from === child.cursor) return name
   }
-  return "done"
+  throw new Error(`Workflow "${workflow.name}" ended at undeclared exit "${child.cursor}"`)
 }
 
 function makeEmit(run: MutableRun, options: RunOptions) {
@@ -372,6 +409,10 @@ function publicNode(
     ...(meta?.sessionID ? { sessionID: meta.sessionID } : {}),
     ...(meta?.detail ? { detail: meta.detail } : {}),
     ...(meta?.choices && meta.choices.length > 0 ? { choices: [...meta.choices] } : {}),
+    ...(meta?.prompt ? { prompt: meta.prompt } : {}),
+    ...("output" in (meta ?? {}) ? { output: meta?.output } : {}),
+    ...(meta?.decision ? { decision: meta.decision } : {}),
+    ...(meta?.child ? { child: meta.child } : {}),
   }
 }
 
@@ -392,8 +433,9 @@ const beginMeta = (node: WorkflowNode, ctx: NodeCtx): Effect.Effect<NodeMeta, Er
   Effect.gen(function* () {
     const meta: NodeMeta = { startedAt: Date.now() }
     if (node.type === "decision") meta.choices = [...node.choices]
-    if (node.type === "checkpoint") {
-      meta.detail = yield* Effect.promise(() => resolvePrompt(node.prompt, ctx))
+    if (node.type === "agent" || node.type === "decision" || node.type === "checkpoint") {
+      meta.detail = yield* Effect.tryPromise({ try: () => resolvePrompt(node.prompt, ctx), catch: asError })
+      meta.prompt = meta.detail
     }
     return meta
   })
@@ -403,6 +445,7 @@ function finishMeta(meta: NodeMeta | undefined, output: unknown): NodeMeta {
   return {
     ...meta,
     finishedAt: Date.now(),
+    output,
     ...(choice ? { detail: choice } : {}),
   }
 }
@@ -431,4 +474,8 @@ function choiceOf(output: unknown): string | undefined {
   if (typeof output !== "object" || output === null) return undefined
   const choice = (output as { choice?: unknown }).choice
   return typeof choice === "string" ? choice : undefined
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }

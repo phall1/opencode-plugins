@@ -10,6 +10,14 @@ const Node = Schema.Struct({
   sessionID: Schema.optionalKey(Schema.String),
   detail: Schema.optionalKey(Schema.String),
   choices: Schema.optionalKey(Schema.Array(Schema.String)),
+  prompt: Schema.optionalKey(Schema.String),
+  output: Schema.optionalKey(Schema.Unknown),
+  decision: Schema.optionalKey(Schema.Struct({
+    source: Schema.Literals(["jev", "generate"]),
+    confidence: Schema.Number,
+    probabilities: Schema.Record(Schema.String, Schema.Number),
+  })),
+  child: Schema.optionalKey(Schema.Unknown),
 })
 
 const Edge = Schema.Struct({

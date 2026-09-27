@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Schema } from "effect"
 import { checkpoint, compute, decision, defineWorkflow, includeWorkflow, wait } from "../src/dsl.ts"
-import { nextNode, runWorkflow, toSnapshot, type WorkflowHost } from "../src/engine.ts"
+import { exitOf, nextNode, runWorkflow, toSnapshot, type WorkflowHost } from "../src/engine.ts"
 
 const host: WorkflowHost = {
   runAgent: (request) => Effect.succeed({ reply: request.prompt }),
-  runDecision: (request) => Effect.succeed(request.choices[0] ?? "unknown"),
+  runDecision: (request) => Effect.succeed(judged(request.choices[0] ?? "unknown")),
   checkpoint: () => Effect.succeed({ ok: true }),
   wait: () => Effect.void,
 }
+
+const judged = (choice: string) => ({ choice, source: "jev" as const, confidence: 0.9, probabilities: { [choice]: 0.9 } })
 
 const run = (options: Parameters<typeof runWorkflow>[0]) => Effect.runPromise(runWorkflow(options))
 
@@ -70,11 +72,12 @@ describe("runWorkflow", () => {
 
     const result = await run({
       workflow,
-      host: { ...host, runDecision: () => Effect.succeed("right") },
+      host: { ...host, runDecision: () => Effect.succeed(judged("right")) },
     })
     expect(result.status).toBe("done")
     expect(result.outputs.right).toBe("R")
     expect(result.outputs.left).toBeUndefined()
+    expect(result.nodes.find((node) => node.id === "classify")?.decision).toMatchObject({ source: "jev", confidence: 0.9 })
   })
 
   test("fails when a decision returns an unknown choice", async () => {
@@ -83,13 +86,14 @@ describe("runWorkflow", () => {
       startAt: "classify",
       nodes: {
         classify: decision({ prompt: "pick", choices: ["a", "b"] }),
+        done: compute({ run: () => "ok" }),
       },
-      edges: [],
+      edges: [{ from: "classify", to: "done" }],
     })
 
     const result = await run({
       workflow,
-      host: { ...host, runDecision: () => Effect.succeed("nope") },
+      host: { ...host, runDecision: () => Effect.succeed(judged("nope")) },
     })
     expect(result.status).toBe("failed")
     expect(result.error).toContain("nope")
@@ -187,7 +191,7 @@ describe("runWorkflow", () => {
     })
     const result = await run({
       workflow,
-      host: { ...host, runDecision: () => Effect.succeed("uncertain") },
+      host: { ...host, runDecision: () => Effect.succeed(judged("uncertain")) },
     })
     expect(result.status).toBe("done")
     expect(result.outputs.ask).toBe("human")
@@ -211,6 +215,44 @@ describe("runWorkflow", () => {
     expect(result.status).toBe("done")
     expect(waited).toBe(5)
   })
+
+  test("fails instead of completing when a decision has no matching route", async () => {
+    const workflow = defineWorkflow({
+      name: "unmapped",
+      startAt: "route",
+      nodes: { route: decision({ prompt: "pick", choices: ["go"] }), done: compute({ run: () => "ok" }) },
+      edges: [{ from: "route.go", to: "done" }],
+    })
+    const result = await run({ workflow, host: { ...host, runDecision: () => Effect.succeed(judged("uncertain")) } })
+    expect(result.status).toBe("failed")
+    expect(result.error).toContain("No route")
+  })
+
+  test("fails invalid agent JSON instead of handing garbage to the next step", async () => {
+    const workflow = defineWorkflow({
+      name: "invalid-agent",
+      startAt: "work",
+      nodes: { work: { type: "agent" as const, prompt: "work", output: "json" as const, session: "child" as const } },
+      edges: [],
+    })
+    const result = await run({ workflow, host: { ...host, runAgent: () => Effect.succeed("not json") } })
+    expect(result.status).toBe("failed")
+    expect(result.error).toContain("JSON object")
+  })
+
+  test("publishes nested child progress in the parent snapshot", async () => {
+    const child = defineWorkflow({ name: "inner", startAt: "work", exits: { ready: { from: "work" } }, nodes: { work: compute({ run: () => ({ ok: true }) }) }, edges: [] })
+    const parent = defineWorkflow({ name: "outer", startAt: "inner", includes: { inner: includeWorkflow(child, { input: () => ({}) }) }, nodes: { done: compute({ run: () => "done" }) }, edges: [{ from: "inner.ready", to: "done" }] })
+    const events: string[] = []
+    const result = await run({ workflow: parent, host, onEvent: (event) => Effect.sync(() => { events.push(event.type) }) })
+    expect(result.nodes.find((node) => node.id === "inner")?.child?.nodes[0]?.status).toBe("done")
+    expect(events).toContain("node.updated")
+  })
+})
+
+test("declared child exits reject an unexpected terminal cursor", () => {
+  const child = defineWorkflow({ name: "child", startAt: "ok", exits: { ready: { from: "ok" } }, nodes: { ok: compute({ run: () => 1 }), other: compute({ run: () => 2 }) }, edges: [] })
+  expect(() => exitOf(child, { id: "x", workflow: "child", status: "done", cursor: "other", startedAt: 1, input: {}, outputs: {}, nodes: [], edges: [] })).toThrow("undeclared exit")
 })
 
 describe("nextNode", () => {

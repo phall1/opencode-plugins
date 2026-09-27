@@ -1,4 +1,4 @@
-import { agent, compute, decision, defineWorkflow } from "../dsl.ts"
+import { agent, compute, defineWorkflow } from "../dsl.ts"
 
 export default defineWorkflow({
   name: "autoimplement",
@@ -10,6 +10,7 @@ export default defineWorkflow({
   },
   nodes: {
     find: agent({
+      validate: (output) => typeof output === "object" && output !== null && typeof (output as { found?: unknown }).found === "boolean",
       prompt: ({ input }) => `Find the existing plan. Do not devise a new one.
 
 Task: ${String((input as { task?: string }).task ?? "")}
@@ -18,10 +19,6 @@ Repository: ${String((input as { repository?: string }).repository ?? ".")}
 Scope: ${String((input as { scope?: string }).scope ?? "current repository, no merge or release")}
 
 Return JSON: { "found": true | false, "plan": { "title": "...", "summary": "...", "steps": [] } }`,
-    }),
-    route: decision({
-      prompt: ({ outputs }) => `Can we implement this plan? ${JSON.stringify(outputs.find)}`,
-      choices: ["implement", "blocked"],
     }),
     implement: agent({
       prompt: ({ input, outputs }) => `Implement the given plan end to end in the authorized scope.
@@ -34,15 +31,13 @@ Merge authorized: ${String((input as { merge?: boolean }).merge ?? false)}
 Return JSON: { "summary": "...", "files": [], "pr": null | "...", "notes": [] }`,
     }),
     verify: agent({
+      validate: (output) => typeof output === "object" && output !== null && typeof (output as { passed?: unknown }).passed === "boolean",
       prompt: ({ outputs }) => `Verify the implementation. Run the relevant tests. State what could not be tested.
 
 Implementation: ${JSON.stringify(outputs.implement)}
+Latest fix: ${JSON.stringify(outputs.fix ?? null)}
 
 Return JSON: { "passed": true | false, "commands": [{ "cmd": "...", "ok": true }], "untested": [] }`,
-    }),
-    review: decision({
-      prompt: ({ outputs }) => `Did verification pass? ${JSON.stringify(outputs.verify)}`,
-      choices: ["pass", "fix", "blocked"],
     }),
     fix: agent({
       prompt: ({ outputs }) => `Fix the verification failures. Stay in scope.
@@ -64,14 +59,12 @@ Return JSON: { "summary": "...", "files": [] }`,
     }),
   },
   edges: [
-    { from: "find", to: "route" },
-    { from: "route.implement", to: "implement" },
-    { from: "route.blocked", to: "blocked" },
+    { from: "find", to: "implement", when: ({ output }) => (output as { found?: boolean }).found === true },
+    { from: "find", to: "blocked" },
     { from: "implement", to: "verify" },
-    { from: "verify", to: "review" },
-    { from: "review.pass", to: "done" },
-    { from: "review.fix", to: "fix" },
-    { from: "review.blocked", to: "blocked" },
+    { from: "verify", to: "done", when: ({ output }) => (output as { passed?: boolean }).passed === true },
+    { from: "verify", to: "fix", when: ({ outputs }) => !outputs.fix },
+    { from: "verify", to: "blocked" },
     { from: "fix", to: "verify" },
   ],
 })

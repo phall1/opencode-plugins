@@ -66,6 +66,6 @@ export const judgeChoice = (input: {
 }
 
 export function applyConfidence(judgment: Judgment, minConfidence?: number): Judgment {
-  if (minConfidence === undefined || judgment.confidence >= minConfidence) return judgment
+  if (minConfidence === undefined || (judgment.source === "jev" && judgment.confidence >= minConfidence)) return judgment
   return { ...judgment, choice: "uncertain" }
 }

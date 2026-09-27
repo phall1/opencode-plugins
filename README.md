@@ -8,9 +8,10 @@ This repo's `opencode.jsonc` loads the workflows plugin from source.
 
 ### [`@phall1/opencode-workflows`](./packages/workflows)
 
-Typed workflow graphs that run as Effects on the OpenCode server. Agent steps
-are sessions, decisions are `generate.text`, checkpoints are `Deferred`s, cancel
-is fiber interrupt, and the live graph lives in a session panel.
+Opt-in typed workflow graphs that run as Effects on the OpenCode server. Agent
+steps are sessions, decisions use Jev Choice with an uncalibrated `generate.text`
+fallback, checkpoints are `Deferred`s, cancel interrupts the fiber and child
+session, and the live graph and per-step details live in a session panel.
 
 ```jsonc
 {
@@ -18,8 +19,9 @@ is fiber interrupt, and the live graph lives in a session panel.
 }
 ```
 
-Bundled: `echo`, `autoplan`, `autodoc`, `autoimplement`, `sanity-check`,
-`monitor`, `ship`.
+Bundled: `ping`, `echo`, `wire`, `autoplan`, `autodoc`, `autoimplement`,
+`sanity-check`, `monitor`, `ship`, `harden`. Ordinary requests do not auto-start
+workflows; ask for one explicitly or use `/workflow`.
 
 ```
 /workflow
