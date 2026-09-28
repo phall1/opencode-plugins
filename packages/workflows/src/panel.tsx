@@ -7,7 +7,7 @@ import { loadWorkflowDiagram } from "./diagram.ts"
 import type { NodeSnapshot, RunSnapshot } from "./engine.ts"
 import { glyph } from "./format.ts"
 import { workflowMermaid } from "./graph.ts"
-import { cursorIndex, panelHints, rowTail, runElapsed, runTitle, showGraph, typeGlyph } from "./view.ts"
+import { panelHints, rowTail, runElapsed, runTitle, showGraph, stepDetail, typeGlyph, visibleSteps } from "./view.ts"
 import "opentui-spinner/solid"
 
 export type WorkflowRpc = {
@@ -37,7 +37,10 @@ export function WorkflowPanel(props: { run: RunSnapshot | null; panel: PanelInpu
   createEffect(() => {
     const run = props.run
     if (!run || pinned()) return
-    setSelected(cursorIndex(run))
+    const steps = visibleSteps(run)
+    const index = steps.findIndex((step) => step.node.id === run.cursor && step.depth === 0)
+    const childIndex = steps.findLastIndex((step) => step.node.status === "running" || step.node.status === "waiting")
+    setSelected(childIndex >= 0 ? childIndex : Math.max(0, index))
   })
 
   context.keymap.layer(() => ({
@@ -54,8 +57,9 @@ export function WorkflowPanel(props: { run: RunSnapshot | null; panel: PanelInpu
 
   let scroll: ScrollBoxRenderable | undefined
   const run = () => props.run
+  const steps = () => run() ? visibleSteps(run()!) : []
   const nodes = () => run()?.nodes ?? []
-  const selectedNode = () => nodes()[selected()]
+  const selectedNode = () => steps()[selected()]?.node
 
   createEffect(() => {
     const index = selected()
@@ -76,12 +80,13 @@ export function WorkflowPanel(props: { run: RunSnapshot | null; panel: PanelInpu
           />
         </Show>
         <scrollbox flexGrow={1} scrollbarOptions={{ visible: false }} ref={(value: ScrollBoxRenderable) => (scroll = value)}>
-          <For each={nodes()}>
-            {(node, index) => (
+          <For each={steps()}>
+            {(step, index) => (
               <NodeRow
-                node={node}
+                node={step.node}
+                label={`${"  ".repeat(step.depth)}${step.label}`}
                 active={index() === selected()}
-                live={node.id === run()!.cursor && run()!.status === "running"}
+                live={step.node.status === "running"}
                 now={now()}
                 onChoose={() => setSelected(index())}
                 onOpen={() => {
@@ -93,15 +98,15 @@ export function WorkflowPanel(props: { run: RunSnapshot | null; panel: PanelInpu
             )}
           </For>
         </scrollbox>
-        <Show when={run()!.status === "waiting" && waitingDetail(run()!)}>
-          <text fg={context.theme.text.status.question} wrapMode="word">
-            {waitingDetail(run()!)}
-          </text>
+        <Show when={selectedNode()}>
+          <scrollbox maxHeight={props.panel.presentation === "fullscreen" ? 16 : 8} scrollbarOptions={{ visible: true }}>
+            <text fg={context.theme.text.subdued} wrapMode="word">{stepDetail(selectedNode()!)}</text>
+          </scrollbox>
         </Show>
         <text fg={context.theme.text.subdued} wrapMode="none">
           {panelHints({
             fullscreen: props.panel.presentation === "fullscreen",
-            waiting: run()!.status === "waiting",
+            waiting: steps().some((step) => step.node.status === "waiting"),
             stoppable: run()!.status === "running" || run()!.status === "waiting",
             openable: Boolean(selectedNode()?.sessionID),
           })}
@@ -109,10 +114,6 @@ export function WorkflowPanel(props: { run: RunSnapshot | null; panel: PanelInpu
       </Show>
     </box>
   )
-}
-
-function waitingDetail(run: RunSnapshot): string | undefined {
-  return run.nodes.find((node) => node.id === run.cursor)?.detail
 }
 
 function panelCommands(actions: {
@@ -143,7 +144,7 @@ function move(
   setPinned: (value: boolean) => void,
   delta: number,
 ) {
-  const count = run?.nodes.length ?? 0
+  const count = run ? visibleSteps(run).length : 0
   if (count === 0) return
   setPinned(true)
   setSelected((selected + delta + count) % count)
@@ -189,7 +190,7 @@ function WorkflowGraph(props: {
 }) {
   const context = usePlugin()
   return (
-    <Show when={props.renderNode}>
+    <Show when={props.renderNode} fallback={<text fg={context.theme.text.subdued}>Diagram unavailable · step list remains available</text>}>
       <scrollbox maxHeight={props.fullscreen ? 18 : 12} scrollbarOptions={{ visible: false }}>
         <markdown
           fg={context.theme.text.default}
@@ -204,6 +205,7 @@ function WorkflowGraph(props: {
 
 function NodeRow(props: {
   node: NodeSnapshot
+  label: string
   active: boolean
   live: boolean
   now: number
@@ -238,7 +240,7 @@ function NodeRow(props: {
         {typeGlyph(props.node.type)}
       </text>
       <text flexGrow={1} wrapMode="none" fg={fg()} attributes={props.active ? TextAttributes.BOLD : undefined}>
-        {props.node.id}
+        {props.label}
       </text>
       <text wrapMode="none" fg={props.active ? fg() : context.theme.text.subdued}>
         {rowTail(props.node, props.now)}
@@ -279,7 +281,7 @@ function openSelected(
   run: RunSnapshot | null,
   index: number,
 ) {
-  const node = run?.nodes[index]
+  const node = run ? visibleSteps(run)[index]?.node : undefined
   if (!node?.sessionID) return
   context.ui.router.navigate({ type: "session", sessionID: node.sessionID })
 }
@@ -289,10 +291,11 @@ async function answerSelected(
   rpc: WorkflowRpc,
   run: RunSnapshot | null,
 ) {
-  if (!run || run.status !== "waiting") return
-  const node = run.nodes.find((item) => item.id === run.cursor)
+  if (!run) return
+  const node = visibleSteps(run).find((step) => step.node.status === "waiting")?.node
+  if (!node) return
   const value = await context.ui.dialog.prompt({
-    title: `Answer ${run.cursor}`,
+    title: `Answer ${node.id}`,
     placeholder: "answer",
   })
   if (!value) return
@@ -308,8 +311,8 @@ async function cancelRun(
   const cancelled = (await rpc.cancel({ runId: run.id }, callOpts(context))).run
   if (cancelled) remember(context, cancelled)
   context.ui.toast.show({
-    message: cancelled ? `${cancelled.workflow} stopped` : "No run to stop",
-    variant: cancelled ? "success" : "warning",
+    message: cancelled ? `${cancelled.workflow} ${cancelled.status}` : "No run to stop",
+    variant: cancelled?.status === "cancelled" ? "success" : "warning",
   })
 }
 

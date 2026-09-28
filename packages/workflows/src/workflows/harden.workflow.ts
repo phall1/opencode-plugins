@@ -33,6 +33,7 @@ Defect: ${JSON.stringify(outputs.observe)}
 Return JSON: { "changed": [], "summary": "..." }`,
     }),
     verify: agent({
+      validate: (output) => typeof output === "object" && output !== null && typeof (output as { passed?: unknown }).passed === "boolean",
       prompt: ({ outputs }) => `Verify the fix. Run the package tests if relevant.
 
 Fix: ${JSON.stringify(outputs.fix)}
@@ -53,6 +54,7 @@ Return JSON: { "passed": true | false, "notes": [] }`,
     { from: "route.blocked", to: "blocked" },
     { from: "route.uncertain", to: "blocked" },
     { from: "fix", to: "verify" },
-    { from: "verify", to: "done" },
+    { from: "verify", to: "done", when: ({ output }) => (output as { passed?: boolean }).passed === true },
+    { from: "verify", to: "blocked" },
   ],
 })

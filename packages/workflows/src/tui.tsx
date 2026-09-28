@@ -25,8 +25,10 @@ export default Plugin.define({
     })
 
     let stop = () => {}
+    let gotEvent = false
     try {
       stop = rpc.events.on("updated", (event) => {
+        gotEvent = true
         setActive((draft) => {
           draft.run = event.data.run
         })
@@ -37,7 +39,7 @@ export default Plugin.define({
 
     void rpc.status({}, callOpts(context)).then(
       (result) => {
-        if (!result.run) return
+        if (!result.run || gotEvent) return
         setActive((draft) => {
           draft.run = result.run ?? null
         })
@@ -155,11 +157,11 @@ async function runWorkflowCommand(
       showPanel(context)
       return
     }
-    if (head === "cancel") {
-      const run = (await rpc.cancel({ runId: rest[0] }, opts)).run
-      context.ui.toast.show({
-        message: run ? `${run.workflow} stopped` : "No run to stop",
-        variant: run ? "success" : "warning",
+      if (head === "cancel") {
+        const run = (await rpc.cancel({ runId: rest[0] }, opts)).run
+        context.ui.toast.show({
+          message: run ? `${run.workflow} ${run.status}` : "No run to stop",
+          variant: run?.status === "cancelled" ? "success" : "warning",
       })
       return
     }

@@ -12,6 +12,7 @@ export class RunRegistry {
   readonly checkpoints = new Map<string, Deferred.Deferred<unknown, Error>>()
   readonly agents = new Map<string, AgentWaiter>()
   readonly fibers = new Map<string, Fiber.Fiber<RunSnapshot, never>>()
+  readonly sessions = new Map<string, Set<string>>()
   activeRunId: string | undefined
 
   get(runId?: string): RunSnapshot | undefined {
@@ -31,5 +32,12 @@ export class RunRegistry {
     this.runs.set(run.id, run)
     if (run.status === "running" || run.status === "waiting") this.activeRunId = run.id
     else if (this.activeRunId === run.id) this.activeRunId = undefined
+    if (this.runs.size <= 100) return
+    for (const [id, previous] of this.runs) {
+      if (id !== this.activeRunId && previous.status !== "running" && previous.status !== "waiting") {
+        this.runs.delete(id)
+        break
+      }
+    }
   }
 }

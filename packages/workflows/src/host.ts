@@ -23,18 +23,38 @@ export function createHost(options: {
     runAgent: (request) =>
       Effect.gen(function* () {
         const id = yield* sessionFor(request, ctx, originSessionID)
-        if (request.session !== "origin") options.onAgentSession?.(request.nodeId, id)
-        const deferred = yield* Deferred.make<unknown, Error>()
-        registry.agents.set(id, { runId, nodeId: request.nodeId, deferred })
-        yield* ctx.session.prompt({ sessionID: asSessionID(id), text: agentPrompt(request) }).pipe(Effect.orDie)
-        yield* ctx.session.wait({ sessionID: asSessionID(id) }).pipe(Effect.orDie)
-        if (registry.agents.has(id)) {
-          const output = yield* readSessionOutput(ctx, id, request.output)
-          yield* Deferred.succeed(deferred, output)
-          registry.agents.delete(id)
+        if (request.session !== "origin") options.onAgentSession?.(request.path, id)
+        if (request.session !== "origin") {
+          const sessions = registry.sessions.get(runId) ?? new Set<string>()
+          sessions.add(id)
+          registry.sessions.set(runId, sessions)
         }
-        return yield* Deferred.await(deferred)
-      }),
+        return yield* Effect.gen(function* () {
+          const deferred = yield* Deferred.make<unknown, Error>()
+          registry.agents.set(id, { runId, nodeId: request.nodeId, deferred })
+          yield* ctx.session.prompt({ sessionID: asSessionID(id), text: agentPrompt(request) }).pipe(Effect.mapError(asError))
+          yield* ctx.session.wait({ sessionID: asSessionID(id) }).pipe(Effect.mapError(asError))
+          if (registry.agents.has(id)) {
+            const output = yield* readSessionOutput(ctx, id, request.output)
+            yield* Deferred.succeed(deferred, output)
+          }
+          return yield* Deferred.await(deferred)
+        }).pipe(Effect.ensuring(Effect.sync(() => {
+          registry.agents.delete(id)
+          registry.sessions.get(runId)?.delete(id)
+        })))
+      }).pipe(Effect.onInterrupt(() => Effect.gen(function* () {
+        for (const [id, agent] of registry.agents) {
+          if (agent.runId === runId && agent.nodeId === request.nodeId) registry.agents.delete(id)
+        }
+        if (request.session === "origin") return
+        for (const id of registry.sessions.get(runId) ?? []) {
+          yield* ctx.session.interrupt({ sessionID: asSessionID(id) }).pipe(
+            Effect.timeout(Duration.seconds(5)),
+            Effect.catch(() => Effect.void),
+          )
+        }
+      }))),
 
     runDecision: (request) =>
       Effect.gen(function* () {
@@ -50,7 +70,7 @@ export function createHost(options: {
         if (applied.choice !== "uncertain" && !request.choices.includes(applied.choice)) {
           return yield* Effect.fail(new Error(`Decision returned "${applied.choice}"`))
         }
-        return applied.choice
+        return applied
       }),
 
     checkpoint: (_request: CheckpointRequest) =>
@@ -76,7 +96,7 @@ const sessionFor = (
       }
       return originSessionID
     }
-    const created = yield* ctx.session.create({ title: `workflow:${request.nodeId}` }).pipe(Effect.orDie)
+    const created = yield* ctx.session.create({ title: `workflow:${request.path}` }).pipe(Effect.mapError(asError))
     return created.id
   })
 
@@ -92,7 +112,7 @@ const generateChoice = (ctx: Context, request: DecisionRequest): Effect.Effect<J
           'Return JSON only: {"choice":"..."}',
         ].join("\n"),
       })
-      .pipe(Effect.orDie)
+       .pipe(Effect.mapError(asError))
     const choice = parseChoice(result.text, request.choices)
     if (!choice) {
       return yield* Effect.fail(new Error(`Could not parse a decision from: ${truncate(result.text)}`))
@@ -116,12 +136,16 @@ const readSessionOutput = (
   ctx: Context,
   sessionID: string,
   output: AgentRequest["output"],
-): Effect.Effect<unknown> =>
+): Effect.Effect<unknown, Error> =>
   Effect.gen(function* () {
-    const messages = yield* ctx.session.context({ sessionID: asSessionID(sessionID) }).pipe(Effect.orDie)
+    const messages = yield* ctx.session.context({ sessionID: asSessionID(sessionID) }).pipe(Effect.mapError(asError))
     const text = lastAssistantText(messages as readonly unknown[])
     if (output === "assistant") return text
-    return parseJson(text) ?? { text }
+    const parsed = parseJson(text)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return yield* Effect.fail(new Error(`Session ${sessionID} ended without a JSON object or workflow submit`))
+    }
+    return parsed
   })
 
 function lastAssistantText(messages: readonly unknown[]): string {
@@ -142,14 +166,14 @@ function lastAssistantText(messages: readonly unknown[]): string {
   return ""
 }
 
-function parseChoice(text: string, choices: readonly string[]): string | undefined {
+export function parseChoice(text: string, choices: readonly string[]): string | undefined {
   const json = parseJson(text)
   if (json && typeof json === "object" && json !== null && "choice" in json) {
     const choice = (json as { choice: unknown }).choice
     if (typeof choice === "string" && choices.includes(choice)) return choice
   }
   const trimmed = text.trim().replace(/^["']|["']$/g, "")
-  return choices.find((choice) => choice === trimmed || trimmed.endsWith(choice))
+  return choices.find((choice) => choice === trimmed)
 }
 
 function parseJson(text: string): unknown {
@@ -165,4 +189,8 @@ function parseJson(text: string): unknown {
 
 function truncate(text: string): string {
   return text.length > 200 ? `${text.slice(0, 197)}...` : text
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }

@@ -8,9 +8,10 @@ const minutesOf = (input: unknown) => {
 export default defineWorkflow({
   name: "monitor",
   startAt: "observe",
-  maxSteps: 80,
+  maxSteps: 10_000,
   exits: {
     ready: { from: "stop" },
+    blocked: { from: "blocked" },
   },
   nodes: {
     observe: agent({
@@ -20,11 +21,12 @@ Task: ${String((input as { task?: string }).task ?? "")}
 Stop when: ${String((input as { stopWhen?: string }).stopWhen ?? "explicit user stop")}
 Last action: ${JSON.stringify(outputs.act ?? null)}
 
-Return JSON: { "route": "wait" | "act" | "stop", "report": "Monitor: ...", "reason": "..." }`,
+Return JSON: { "report": "Monitor: ...", "reason": "..." }`,
     }),
     route: decision({
       prompt: ({ outputs }) => `Choose the monitor route. ${JSON.stringify(outputs.observe)}`,
       choices: ["wait", "act", "stop"],
+      minConfidence: 0.65,
     }),
     act: agent({
       prompt: ({ input, outputs }) => `Perform only the one safe authorized action from the observation.
@@ -41,12 +43,16 @@ Return JSON: { "kind": "advance" | "recover" | "repair", "summary": "...", "bloc
     stop: compute({
       run: ({ outputs }) => ({ status: "ready", observation: outputs.observe }),
     }),
+    blocked: compute({
+      run: ({ outputs }) => ({ status: "blocked", reason: "Uncalibrated or uncertain route", observation: outputs.observe }),
+    }),
   },
   edges: [
     { from: "observe", to: "route" },
     { from: "route.wait", to: "pause" },
     { from: "route.act", to: "act" },
     { from: "route.stop", to: "stop" },
+    { from: "route.uncertain", to: "blocked" },
     { from: "pause", to: "observe" },
     { from: "act", to: "observe" },
   ],

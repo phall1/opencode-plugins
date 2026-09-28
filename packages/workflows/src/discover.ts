@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { isWorkflow, type Workflow } from "./dsl.ts"
+import { isWorkflow, validateWorkflow, type Workflow } from "./dsl.ts"
 
 const FILE_PATTERN = /\.workflow\.(ts|js|mts|mjs)$/
 
@@ -50,6 +50,7 @@ export async function loadWorkflow(file: string): Promise<Workflow | undefined> 
     console.error(`opencode-workflows: ${file} does not default-export a workflow`)
     return undefined
   }
+  validateWorkflow(mod.default)
   return mod.default
 }
 

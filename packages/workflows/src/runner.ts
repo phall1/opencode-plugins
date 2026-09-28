@@ -32,10 +32,10 @@ export const startRun = (options: {
       registry: options.registry,
       runId,
       originSessionID: options.originSessionID,
-      onAgentSession: (nodeId, sessionID) => {
-        sessions.set(nodeId, sessionID)
+      onAgentSession: (path, sessionID) => {
+        sessions.set(path, sessionID)
         const current = options.registry.get(runId)
-        if (current) void Effect.runPromise(publish(current))
+        if (current) void Effect.runPromise(publish(current)).catch((error) => console.error("opencode-workflows: failed to publish session link", error))
       },
     })
     const initial = toSnapshot(createRun(options.workflow, options.input, runId))
@@ -49,7 +49,15 @@ export const startRun = (options: {
       host,
       runId,
       onEvent: (event) => publish(event.run).pipe(Effect.andThen(maybeNarrate(options, live, event))),
-    }).pipe(Effect.tap(publish), Effect.forkDetach({ startImmediately: true }))
+    }).pipe(
+      Effect.tap(publish),
+      Effect.ensuring(Effect.sync(() => {
+        options.registry.sessions.delete(runId)
+        options.registry.fibers.delete(runId)
+        options.registry.checkpoints.delete(runId)
+      })),
+      Effect.forkDetach({ startImmediately: true }),
+    )
     options.registry.fibers.set(runId, fiber)
 
     yield* waitWhileRunning(options.registry, runId)
@@ -62,6 +70,7 @@ export const cancelRun = (registry: RunRegistry, runId: string): Effect.Effect<R
   Effect.gen(function* () {
     const run = registry.runs.get(runId)
     if (!run) return undefined
+    if (run.status !== "running" && run.status !== "waiting") return run
     const fiber = registry.fibers.get(runId)
     if (fiber) yield* Fiber.interrupt(fiber)
     const checkpoint = registry.checkpoints.get(runId)
@@ -74,6 +83,7 @@ export const cancelRun = (registry: RunRegistry, runId: string): Effect.Effect<R
       yield* Deferred.fail(agent.deferred, cancelledError())
       registry.agents.delete(sessionID)
     }
+    registry.sessions.delete(runId)
     const cancelled = toSnapshot({ ...run, status: "cancelled", error: "Workflow cancelled" })
     registry.put(cancelled)
     return cancelled
@@ -110,13 +120,18 @@ const maybeNarrate = (
     )
 }
 
-function stampSessions(run: RunSnapshot, sessions: Map<string, string>): RunSnapshot {
+function stampSessions(run: RunSnapshot, sessions: Map<string, string>, prefix = ""): RunSnapshot {
   if (sessions.size === 0) return run
   return {
     ...run,
     nodes: run.nodes.map((node) => {
-      const sessionID = sessions.get(node.id)
-      return sessionID ? { ...node, sessionID } : node
+      const path = prefix ? `${prefix}.${node.id}` : node.id
+      const sessionID = sessions.get(path)
+      return {
+        ...node,
+        ...(sessionID ? { sessionID } : {}),
+        ...(node.child ? { child: stampSessions(node.child, sessions, path) } : {}),
+      }
     }),
   }
 }

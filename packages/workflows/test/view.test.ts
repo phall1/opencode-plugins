@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { RunSnapshot } from "../src/engine.ts"
-import { panelHints, runTitle, showGraph } from "../src/view.ts"
+import { panelHints, runTitle, showGraph, stepDetail, visibleSteps } from "../src/view.ts"
 
 const run: RunSnapshot = {
   id: "wf_1",
@@ -30,5 +30,13 @@ describe("panel layout", () => {
 
   test("uses the task as the title", () => {
     expect(runTitle(run)).toBe("plan a timeout fallback")
+  })
+
+  test("shows nested steps, decisions and prompts", () => {
+    const child = { ...run, workflow: "child", nodes: [{ id: "route", type: "decision" as const, status: "done" as const, prompt: "Why?", output: { choice: "go" }, decision: { source: "generate" as const, confidence: 1, probabilities: { go: 1 } } }] }
+    const nested = { ...run, nodes: [{ id: "child", type: "include" as const, status: "done" as const, child }] }
+    expect(visibleSteps(nested).map((step) => step.depth)).toEqual([0, 1])
+    expect(stepDetail(child.nodes[0]!)).toContain("uncalibrated fallback")
+    expect(stepDetail(child.nodes[0]!)).toContain("Why?")
   })
 })
