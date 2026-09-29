@@ -1,3 +1,4 @@
+/** @jsxImportSource @opentui/solid */
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
 import { createSignal, Show } from "solid-js"
 import type { RunSnapshot } from "./engine.ts"
