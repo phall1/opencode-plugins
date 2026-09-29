@@ -2,7 +2,8 @@
 
 Plugins for [OpenCode](https://opencode.ai) V2.
 
-This repo's `opencode.jsonc` loads the workflows plugin from source.
+The workflows plugin is loaded from the user's global OpenCode configuration.
+The project config does not auto-load a second copy from source.
 
 ## Plugins
 
@@ -31,6 +32,7 @@ workflows; ask for one explicitly or use `/workflow`.
 
 ## Local development
 
-Open this directory in OpenCode. Project `opencode.jsonc` loads
-`./packages/workflows`. Local plugins need `server.ts` / `tui.tsx` at the
-package root (same layout as beads). The CLI picks `./tui` up automatically.
+For local plugin development, temporarily disable the global pinned workflows
+entry and add `./packages/workflows` to this project's `opencode.jsonc`.
+Local plugins need `server.ts` / `tui.tsx` at the package root (same layout as
+beads). The CLI picks `./tui` up automatically.
