@@ -1,3 +1,4 @@
+/** @jsxImportSource @opentui/solid */
 import { ScrollBoxRenderable, SyntaxStyle, TextAttributes, type MarkdownOptions } from "@opentui/core"
 import type { PanelInput } from "@opencode/plugin/tui/context"
 import { usePlugin } from "@opencode/plugin/tui"
