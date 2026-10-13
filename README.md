@@ -30,6 +30,15 @@ workflows; ask for one explicitly or use `/workflow`.
 /workflow-graph
 ```
 
+### [`@phall1/opencode-router`](./packages/router)
+
+Jev-powered automatic Code Mode discovery. Preloads relevant exact tool paths
+and input schemas before the main model call, avoiding a search round trip.
+Native search, permissions, and phux terminal ownership remain authoritative.
+Includes bounded routing, runtime diagnostics, and a verified standalone bundle
+for global deployment without npm preparation. See the package's
+[evaluation evidence](./packages/router/EVALUATION.md).
+
 ## Local development
 
 For local plugin development, temporarily disable the global pinned workflows
