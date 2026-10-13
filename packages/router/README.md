@@ -26,7 +26,18 @@ arguments. No key is written into configuration, telemetry, or session history.
 The successful credential is cached in memory for up to five minutes, so
 credential-command rotation recovers without restarting the service.
 
-For portable installs, pin this repository's commit:
+For portable installs, pin this repository's commit. **OpenCode 2.0.27's
+bundled-npm Git preparation can fail before plugin loading.** The verified
+workstation deployment uses a native Chezmoi `file` external instead: fetch the
+committed `server.js` at an immutable commit, verify its SHA256, materialize it
+under `~/.config/opencode/vendor/jev-router/server.js`, and load
+`./vendor/jev-router` with the credential-command options above. The bundle is
+the complete server plugin; it needs no npm install or runtime SDK.
+
+Verified artifact commit: `0e59f3a6f00aefbf5e94eff48cc47f4b07701d19`.
+SHA256: `7f555bd0770ddedca92f96cf4e12130a8ad3e77e539b9509bde29dc03387f0c6`.
+
+Where the host's Git package installer works, this form is also supported:
 
 ```jsonc
 {
