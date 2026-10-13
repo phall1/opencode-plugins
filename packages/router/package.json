@@ -1,0 +1,19 @@
+{
+  "name": "@phall1/opencode-router",
+  "version": "0.1.0",
+  "description": "Jev-powered automatic Code Mode tool discovery for OpenCode V2",
+  "type": "module",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/phall1/opencode-plugins.git", "directory": "packages/router" },
+  "exports": { ".": "./server.js" },
+  "files": ["server.js", "README.md"],
+  "scripts": {
+    "build": "bun build src/plugin.ts --outfile server.js --target bun --format esm --minify --external @opencode/plugin",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "check": "bun run typecheck && bun run build && bun run test",
+    "eval": "bun run scripts/eval.ts"
+  },
+  "dependencies": { "effect": "4.0.1" },
+  "devDependencies": { "@opencode/plugin": "2.0.27" }
+}
