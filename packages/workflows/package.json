@@ -26,6 +26,11 @@
   },
   "files": [
     "src",
+    "server.ts",
+    "tui.tsx",
+    "index.ts",
+    "rpc.ts",
+    "docs",
     "README.md"
   ],
   "publishConfig": {

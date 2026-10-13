@@ -41,6 +41,8 @@ owns the threshold:
 - `minConfidence` on a `decision` node
 - below threshold → synthetic choice `uncertain`
 - graph routes `from: "route.uncertain"` to a human checkpoint or a safer lane
+- if Jev is unavailable, the `generate.text` fallback is uncalibrated and a
+  gated decision always routes to `uncertain` rather than claiming confidence 1
 
 Unused branches' uncertainty is ignored.
 
@@ -56,6 +58,20 @@ type until two workflows need it.
 - Put TypeSafe calls in `.workflow.ts` files. Workflows stay host-agnostic.
 - Use Jev to generate the next graph. The graph is source.
 - Treat `generate.text` fallback as equivalent. It has no calibrated confidence;
-  `source: "generate"` always reports confidence 1 and must not drive gates.
+  `source: "generate"` reports confidence 1 as a parser placeholder but never
+  passes a `minConfidence` gate. The panel labels it uncalibrated.
 - Copy Dispatch's full router. Workflows need Choice at edges, not a second
   product.
+
+## Invocation and failure contracts
+
+Workflows are opt-in: ordinary tasks use OpenCode's regular tools and subagents.
+An agent node is a child session (except explicitly marked `origin` steps). The
+host requests a JSON object via `workflow submit` and rejects malformed
+fallback text instead of handing `{ text }` to subsequent nodes. A workflow
+can add a per-node `validate` predicate for its output shape. Decision source,
+confidence, prompts, outputs, and nested include progress are kept in run
+snapshots for inspection. Graph definitions are checked for invalid edges and
+missing routes at discovery; unexpected exits and unmatched runtime routes
+fail the run. Runs are still in-memory: restarting the server does not resume
+an interrupted run.

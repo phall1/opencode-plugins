@@ -5,7 +5,7 @@ export default defineWorkflow({
   startAt: "evidence",
   maxSteps: 12,
   exits: {
-    ready: { from: "report" },
+    ready: { from: "done" },
   },
   nodes: {
     evidence: agent({
@@ -28,6 +28,7 @@ Return JSON: { "necessity": "...", "duplication": "...", "contracts": "...", "sc
     verdict: decision({
       prompt: ({ outputs }) => `Verified verdict from this review: ${JSON.stringify(outputs.review)}`,
       choices: ["keep", "simplify", "refactor", "drop", "needs_evidence"],
+      minConfidence: 0.65,
     }),
     report: agent({
       output: "assistant",
@@ -43,6 +44,7 @@ Stay read-only. Do not implement.`,
   edges: [
     { from: "evidence", to: "review" },
     { from: "review", to: "verdict" },
+    { from: "verdict.uncertain", to: "report" },
     { from: "verdict", to: "report" },
     { from: "report", to: "done" },
   ],

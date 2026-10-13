@@ -30,6 +30,16 @@ describe("workflowMermaid", () => {
     expect(source).toContain('left("left")')
     expect(source).toContain('classify -->|"left"| left')
   })
+
+  test("uses distinct diagram IDs even when labels normalize identically", () => {
+    const diagram = workflowMermaid({ ...run, nodes: [
+      { id: "a/b", type: "compute", status: "done" },
+      { id: "a_b", type: "compute", status: "pending" },
+    ], edges: [{ from: "a/b", to: "a_b" }] })
+    expect(diagram).toContain('wf_node_0["a/b"]')
+    expect(diagram).toContain('a_b["a_b"]')
+    expect(diagram).toContain("wf_node_0 --> a_b")
+  })
 })
 
 describe("edgeSnapshots", () => {
@@ -39,6 +49,8 @@ describe("edgeSnapshots", () => {
       startAt: "classify",
       nodes: {
         classify: decision({ prompt: "pick", choices: ["left", "right"] }),
+        left: decision({ prompt: "end", choices: [] }),
+        right: decision({ prompt: "end", choices: [] }),
       },
       edges: [
         { from: "classify.left", to: "left" },

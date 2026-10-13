@@ -1,4 +1,4 @@
-import { agent, compute, defineWorkflow } from "../dsl.ts"
+import { agent, defineWorkflow } from "../dsl.ts"
 
 const taskOf = (input: unknown) => {
   const value = input as { task?: string; problem?: string }
@@ -11,7 +11,6 @@ export default defineWorkflow({
   maxSteps: 20,
   exits: {
     ready: { from: "summary" },
-    blocked: { from: "blocked" },
   },
   nodes: {
     capture: agent({
@@ -26,7 +25,6 @@ Return JSON:
 { "originalUserInstructions": "verbatim user intent, wording preserved", "problem": "...", "scope": "...", "constraints": [] }`,
     }),
     candidates: agent({
-      session: "origin",
       prompt: ({ outputs }) => `Record two through four distinct practical candidates, then describe the Holy grail separately.
 
 Context: ${JSON.stringify(outputs.capture)}
@@ -35,7 +33,6 @@ Return JSON:
 { "candidates": [{ "id": "a", "title": "...", "gist": "...", "solution": "...", "tradeoffs": "..." }], "holyGrail": { "title": "...", "gist": "...", "outsideAuthority": [] } }`,
     }),
     choose: agent({
-      session: "origin",
       prompt: ({ outputs }) => `Choose the best practical in-scope option without asking the user.
 Choose the Holy grail only when it is proportionate, production-ready, and implementable through interfaces we control.
 Record one rejection reason for every other option.
@@ -47,7 +44,6 @@ Return JSON:
 { "selectedId": "...", "reason": "...", "rejections": [{ "id": "...", "reason": "..." }] }`,
     }),
     plan: agent({
-      session: "origin",
       prompt: ({ outputs }) => `Write a detailed implementation plan for the selected option.
 For each step: what changes, where, and how to verify.
 
@@ -59,16 +55,12 @@ Return JSON:
 { "title": "...", "summary": "...", "steps": [{ "title": "...", "change": "...", "verify": "..." }], "verification": [] }`,
     }),
     summary: agent({
-      session: "origin",
       output: "assistant",
       prompt: ({ outputs }) => `Write one short assistant message with:
 - the selected plan and its main steps
 - a one-line gist and rejection reason for every other candidate
 
 Do not implement. Plan: ${JSON.stringify(outputs.plan)} Choice: ${JSON.stringify(outputs.choose)}`,
-    }),
-    blocked: compute({
-      run: ({ outputs }) => ({ status: "blocked", capture: outputs.capture }),
     }),
   },
   edges: [

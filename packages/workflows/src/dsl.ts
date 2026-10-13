@@ -23,6 +23,7 @@ export type AgentNode = {
   prompt: string | ((ctx: NodeCtx) => string | Promise<string>)
   output: "json" | "assistant"
   session: "child" | "origin"
+  validate?: (output: unknown) => boolean
 }
 
 export type DecisionNode = {
@@ -80,6 +81,7 @@ export function agent(
     prompt: spec.prompt,
     output: spec.output ?? "json",
     session: spec.session ?? "child",
+    validate: spec.validate,
   }
 }
 
@@ -105,6 +107,11 @@ export function includeWorkflow(workflow: Workflow, spec: { input: IncludeSpec["
 }
 
 export function defineWorkflow<W extends Workflow>(workflow: W): W {
+  validateWorkflow(workflow)
+  return workflow
+}
+
+export function validateWorkflow(workflow: Workflow): void {
   if (!workflow.name.trim()) throw new Error("Workflow name is required")
   if (RESERVED_WORKFLOW_NAMES.has(workflow.name)) {
     throw new Error(`Workflow name "${workflow.name}" is reserved`)
@@ -112,7 +119,50 @@ export function defineWorkflow<W extends Workflow>(workflow: W): W {
   if (!hasStart(workflow)) {
     throw new Error(`startAt "${workflow.startAt}" is not a node or include in "${workflow.name}"`)
   }
-  return workflow
+  const ids = new Set([...Object.keys(workflow.nodes), ...Object.keys(workflow.includes ?? {})])
+  if (ids.size !== Object.keys(workflow.nodes).length + Object.keys(workflow.includes ?? {}).length) {
+    throw new Error(`Node and include names overlap in "${workflow.name}"`)
+  }
+  for (const edge of workflow.edges) {
+    const from = edge.from.split(".")[0]!
+    if (!ids.has(from) || !ids.has(edge.to)) {
+      throw new Error(`Invalid edge ${edge.from} → ${edge.to} in "${workflow.name}"`)
+    }
+    const choices = workflow.nodes[from]?.type === "decision"
+      ? (workflow.nodes[from] as DecisionNode).choices
+      : workflow.includes?.[from]?.workflow.exits
+        ? Object.keys(workflow.includes[from]!.workflow.exits!)
+        : undefined
+    const label = edge.from.slice(from.length + 1)
+    if (edge.from !== from && choices && !choices.includes(label) && label !== "uncertain") {
+      throw new Error(`Unknown route "${edge.from}" in "${workflow.name}"`)
+    }
+  }
+  for (const [id, node] of Object.entries(workflow.nodes)) {
+    if (node.type !== "decision") continue
+    if (node.minConfidence !== undefined && (!Number.isFinite(node.minConfidence) || node.minConfidence < 0 || node.minConfidence > 1)) {
+      throw new Error(`Decision "${id}" has invalid minConfidence`)
+    }
+    const direct = workflow.edges.some((edge) => edge.from === id)
+    for (const choice of [...node.choices, ...(node.minConfidence === undefined ? [] : ["uncertain"])]) {
+      if (!direct && !workflow.edges.some((edge) => edge.from === `${id}.${choice}`)) {
+        throw new Error(`Decision "${id}" has no route for "${choice}"`)
+      }
+    }
+  }
+  for (const [id, include] of Object.entries(workflow.includes ?? {})) {
+    const direct = workflow.edges.some((edge) => edge.from === id)
+    for (const exit of Object.keys(include.workflow.exits ?? { done: {} })) {
+      if (!direct && !workflow.edges.some((edge) => edge.from === `${id}.${exit}`)) {
+        throw new Error(`Include "${id}" has no route for "${exit}"`)
+      }
+    }
+  }
+  for (const [name, exit] of Object.entries(workflow.exits ?? {})) {
+    if (!ids.has(exit.from) || workflow.edges.some((edge) => edge.from === exit.from || edge.from.startsWith(`${exit.from}.`))) {
+      throw new Error(`Exit "${name}" must point to a terminal node in "${workflow.name}"`)
+    }
+  }
 }
 
 export function isWorkflow(value: unknown): value is Workflow {

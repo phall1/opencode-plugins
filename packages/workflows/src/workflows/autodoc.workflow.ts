@@ -1,4 +1,4 @@
-import { agent, compute, decision, defineWorkflow } from "../dsl.ts"
+import { agent, compute, defineWorkflow } from "../dsl.ts"
 
 export default defineWorkflow({
   name: "autodoc",
@@ -10,6 +10,7 @@ export default defineWorkflow({
   },
   nodes: {
     find: agent({
+      validate: (output) => typeof output === "object" && output !== null && typeof (output as { found?: unknown }).found === "boolean",
       prompt: ({ input }) => `Find the already selected plan. Do not devise a new one.
 
 Task: ${String((input as { task?: string }).task ?? "")}
@@ -17,10 +18,6 @@ Plan: ${JSON.stringify((input as { plan?: unknown }).plan ?? null)}
 Documents: ${JSON.stringify((input as { documents?: string[] }).documents ?? [])}
 
 Return JSON: { "found": true | false, "plan": { "title": "...", "summary": "..." }, "documents": [] }`,
-    }),
-    route: decision({
-      prompt: ({ outputs }) => `Is there a clear selected plan to record? ${JSON.stringify(outputs.find)}`,
-      choices: ["write", "blocked"],
     }),
     write: agent({
       prompt: ({ input, outputs }) => `Record the selected plan in canonical documentation. Do not implement.
@@ -38,9 +35,8 @@ Create or update the plan document. Return JSON: { "path": "...", "changed": tru
     }),
   },
   edges: [
-    { from: "find", to: "route" },
-    { from: "route.write", to: "write" },
-    { from: "route.blocked", to: "blocked" },
+    { from: "find", to: "write", when: ({ output }) => (output as { found?: boolean }).found === true },
+    { from: "find", to: "blocked" },
     { from: "write", to: "done" },
   ],
 })

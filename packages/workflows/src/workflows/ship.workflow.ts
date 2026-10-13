@@ -14,13 +14,13 @@ export default defineWorkflow({
     autodoc: includeWorkflow(autodoc, {
       input: ({ input, outputs }) => ({
         ...(input as object),
-        plan: (outputs.autoplan as { outputs?: unknown })?.outputs ?? outputs.autoplan,
+        plan: (outputs.autoplan as { outputs: { plan: unknown } }).outputs.plan,
       }),
     }),
     autoimplement: includeWorkflow(autoimplement, {
       input: ({ input, outputs }) => ({
         ...(input as object),
-        plan: (outputs.autoplan as { outputs?: unknown })?.outputs ?? outputs.autoplan,
+        plan: (outputs.autoplan as { outputs: { plan: unknown } }).outputs.plan,
       }),
     }),
   },
@@ -48,7 +48,6 @@ export default defineWorkflow({
   edges: [
     { from: "start", to: "autoplan" },
     { from: "autoplan.ready", to: "autodoc" },
-    { from: "autoplan.blocked", to: "blocked" },
     { from: "autodoc.ready", to: "autoimplement" },
     { from: "autodoc.blocked", to: "blocked" },
     { from: "autoimplement.ready", to: "done" },

@@ -139,7 +139,7 @@ export default Plugin.define({
         editor.add({
           name: "workflow",
           description:
-            "Kick off a workflow from the user's request. Start once with name and task, then end the turn. Child sessions do the work. This chat stays free. submit only inside a workflow child session.",
+            "Manage an explicitly requested workflow. Do not start workflows for ordinary planning, coding, reviewing or documentation requests. Child sessions run agent steps; submit is only for a workflow child session.",
           input: ToolInput,
           execute: (input, context) =>
             Effect.gen(function* () {
