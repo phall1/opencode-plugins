@@ -41,6 +41,19 @@ for global deployment without npm preparation. See the package's
 
 ## Local development
 
+Router `0.1.1` and workflows `0.0.2` are validated with Bun `1.4.3`,
+OpenCode/SDK `2.0.32`, Effect `4.0.1`, OpenTUI `0.5.17`, and Solid `1.9.12`.
+Keep these host runtimes aligned. TypeScript stays at `5.9.3` because
+`opentui-spinner` and `bun-ffi-structs` require the `^5` peer range.
+The root overrides pair `seroval`/`seroval-plugins` at `1.6.9` for security
+and keep `@effect/platform-node-shared` at `4.0.1`: `4.0.5` requires Effect
+`^4.0.5` and fails Drive startup against the stable host runtime.
+
+Validate releases with `bun install --frozen-lockfile`, `bun run check`,
+`bun run --cwd packages/workflows test:tui`, and `bun audit`.
+Builds regenerate committed artifacts without install lifecycle hooks;
+`npm pack --dry-run` in each package previews publication contents.
+
 For local plugin development, temporarily disable the global pinned workflows
 entry and add `./packages/workflows` to this project's `opencode.jsonc`.
 Local plugins need `server.ts` / `tui.tsx` at the package root (same layout as

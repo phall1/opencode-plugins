@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Host } from "@opencode/plugin/host"
 import { ensurePluginRuntime } from "@opencode/plugin/runtime"
+import { version } from "../package.json"
 
 test("packed plugin loads outside the checkout with the host-provided Effect runtime", async () => {
   const root = join(tmpdir(), "opencode")
@@ -13,7 +14,7 @@ test("packed plugin loads outside the checkout with the host-provided Effect run
   try {
     ensurePluginRuntime()
     execFileSync(process.execPath, ["pm", "pack", "--destination", scratch], { cwd: join(import.meta.dir, ".."), stdio: "pipe" })
-    execFileSync("tar", ["-xzf", join(scratch, "phall1-opencode-router-0.1.0.tgz"), "-C", scratch])
+    execFileSync("tar", ["-xzf", join(scratch, `phall1-opencode-router-${version}.tgz`), "-C", scratch])
     const entry = (await Host.load(join(scratch, "package/server.js")) as { default: {
       id: string;
       setup(context: unknown): Promise<() => void>;
