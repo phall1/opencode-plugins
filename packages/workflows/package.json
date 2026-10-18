@@ -38,8 +38,8 @@
     "access": "public"
   },
   "scripts": {
-    "check": "bun run typecheck && bun run build && bun run test",
-    "build": "bun scripts/build.mjs",
+    "check": "bun run typecheck && bun run compile && bun run test",
+    "compile": "bun scripts/build.mjs",
     "test": "bun test",
     "test:tui": "opencode-drive run scripts/tui-drive.ts",
     "typecheck": "tsc --noEmit"
