@@ -45,10 +45,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@opencode/plugin": "2.0.32",
     "opentui-spinner": "0.0.7"
   },
   "peerDependencies": {
-    "@opencode/plugin": "^2.0.32",
     "effect": "^4.0.1",
     "@opentui/core": "0.5.17",
     "@opentui/solid": "0.5.17",

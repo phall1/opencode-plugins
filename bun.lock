@@ -24,6 +24,7 @@
       "name": "@phall1/opencode-workflows",
       "version": "0.0.1",
       "dependencies": {
+        "@opencode/plugin": "2.0.32",
         "opentui-spinner": "0.0.7",
       },
       "devDependencies": {
@@ -37,7 +38,6 @@
         "solid-js": "1.9.12",
       },
       "peerDependencies": {
-        "@opencode/plugin": "^2.0.32",
         "@opentui/core": "0.5.17",
         "@opentui/solid": "0.5.17",
         "effect": "^4.0.1",
