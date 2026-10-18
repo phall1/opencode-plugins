@@ -34,8 +34,9 @@ under `~/.config/opencode/vendor/jev-router/server.js`, and load
 `./vendor/jev-router` with the credential-command options above. The bundle is
 the complete server plugin; it needs no npm install or runtime SDK.
 
-Verified artifact commit: `0e59f3a6f00aefbf5e94eff48cc47f4b07701d19`.
-SHA256: `7f555bd0770ddedca92f96cf4e12130a8ad3e77e539b9509bde29dc03387f0c6`.
+Release `0.1.1` is verified against OpenCode/SDK `2.0.32` and Effect `4.0.1`.
+Checked-in `server.js` SHA256:
+`4d097e10091822a2bfa15e7f1927b2cc74aa5d90653a5321015b6d24b4502a68`.
 
 Where the host's Git package installer works, this form is also supported:
 

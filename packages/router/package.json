@@ -1,6 +1,6 @@
 {
   "name": "@phall1/opencode-router",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Jev-powered automatic Code Mode tool discovery for OpenCode V2",
   "type": "module",
   "license": "MIT",
