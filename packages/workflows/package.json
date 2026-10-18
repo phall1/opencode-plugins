@@ -22,12 +22,13 @@
     ".": "./src/index.ts",
     "./dsl": "./src/dsl.ts",
     "./rpc": "./src/rpc.ts",
-    "./tui": "./src/tui.tsx"
+    "./tui": "./tui.js"
   },
   "files": [
     "src",
     "server.ts",
     "tui.tsx",
+    "tui.js",
     "index.ts",
     "rpc.ts",
     "docs",
@@ -37,24 +38,30 @@
     "access": "public"
   },
   "scripts": {
-    "check": "bun run typecheck && bun run test",
+    "check": "bun run typecheck && bun run build && bun run test",
+    "build": "bun scripts/build.mjs",
     "test": "bun test",
+    "test:tui": "opencode-drive run scripts/tui-drive.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opencode/plugin": "^2.0.11",
-    "effect": "4.0.0-rc.112",
     "opentui-spinner": "0.0.7"
   },
   "peerDependencies": {
-    "@opentui/core": ">=0.5.10",
-    "@opentui/solid": ">=0.5.10",
-    "solid-js": ">=1.9.0"
+    "@opencode/plugin": "^2.0.32",
+    "effect": "^4.0.1",
+    "@opentui/core": "0.5.17",
+    "@opentui/solid": "0.5.17",
+    "solid-js": "1.9.12"
   },
   "devDependencies": {
     "@tsconfig/bun": "1.0.9",
-    "@opentui/core": "0.5.10",
-    "@opentui/solid": "0.5.10",
-    "solid-js": "1.9.14"
+    "@opencode/plugin": "2.0.32",
+    "@opencode/theme": "2.0.32",
+    "opencode-drive": "2.3.0",
+    "effect": "4.0.1",
+    "@opentui/core": "0.5.17",
+    "@opentui/solid": "0.5.17",
+    "solid-js": "1.9.12"
   }
 }

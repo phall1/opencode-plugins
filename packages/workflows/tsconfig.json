@@ -6,5 +6,5 @@
     "noEmit": true,
     "strict": true
   },
-  "include": ["src", "test", "examples", "src/workflows"]
+  "include": ["src", "test", "examples", "src/workflows", "scripts/*.ts"]
 }

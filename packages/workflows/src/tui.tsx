@@ -116,7 +116,7 @@ function Status(props: { run: RunSnapshot | null }) {
         onMouseOut={() => setHover(false)}
         onMouseUp={() => togglePanel(context)}
       >
-        <text fg={hover() ? context.theme.text.default : footerColor(context.theme, props.run!.status)} wrapMode="none">
+        <text fg={hover() ? context.theme.text.base : footerColor(context.theme, props.run!.status)} wrapMode="none">
           {footerText(props.run!)}
         </text>
       </box>
@@ -125,10 +125,10 @@ function Status(props: { run: RunSnapshot | null }) {
 }
 
 function footerColor(theme: ReturnType<typeof usePlugin>["theme"], status: string) {
-  if (status === "waiting") return theme.text.status.question
-  if (status === "failed" || status === "cancelled") return theme.text.feedback.error.default
-  if (status === "done") return theme.text.subdued
-  return theme.text.status.running
+  if (status === "waiting") return theme.text.feedback.warning.base
+  if (status === "failed" || status === "cancelled") return theme.text.feedback.error.base
+  if (status === "done") return theme.text.muted
+  return theme.text.action.primary.base
 }
 
 function togglePanel(context: ReturnType<typeof usePlugin>) {

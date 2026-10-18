@@ -8,12 +8,12 @@
   "exports": { ".": "./server.js" },
   "files": ["server.js", "README.md"],
   "scripts": {
-    "build": "bun build src/plugin.ts --outfile server.js --target bun --format esm --minify --external @opencode/plugin",
+    "build": "bun build src/plugin.ts --outfile server.js --target bun --format esm --minify --external @opencode/plugin --external effect --external 'effect/*'",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "check": "bun run typecheck && bun run build && bun run test",
     "eval": "bun run scripts/eval.ts"
   },
-  "dependencies": { "effect": "4.0.1" },
-  "devDependencies": { "@opencode/plugin": "2.0.27" }
+  "peerDependencies": { "effect": "^4.0.1" },
+  "devDependencies": { "@opencode/plugin": "2.0.32", "effect": "4.0.1" }
 }
