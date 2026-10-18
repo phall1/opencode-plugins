@@ -71,7 +71,7 @@ export function WorkflowPanel(props: { run: RunSnapshot | null; panel: PanelInpu
 
   return (
     <box paddingLeft={1} paddingRight={1} paddingTop={1} gap={1} height="100%">
-      <Show when={run()} fallback={<text fg={context.theme.text.subdued}>No workflow running</text>}>
+      <Show when={run()} fallback={<text fg={context.theme.text.muted}>No workflow running</text>}>
         <RunHeader run={run()!} now={now()} />
         <Show when={showGraph(props.panel.presentation, nodes().length)}>
           <WorkflowGraph
@@ -101,10 +101,10 @@ export function WorkflowPanel(props: { run: RunSnapshot | null; panel: PanelInpu
         </scrollbox>
         <Show when={selectedNode()}>
           <scrollbox maxHeight={props.panel.presentation === "fullscreen" ? 16 : 8} scrollbarOptions={{ visible: true }}>
-            <text fg={context.theme.text.subdued} wrapMode="word">{stepDetail(selectedNode()!)}</text>
+            <text fg={context.theme.text.muted} wrapMode="word">{stepDetail(selectedNode()!)}</text>
           </scrollbox>
         </Show>
-        <text fg={context.theme.text.subdued} wrapMode="none">
+        <text fg={context.theme.text.muted} wrapMode="none">
           {panelHints({
             fullscreen: props.panel.presentation === "fullscreen",
             waiting: steps().some((step) => step.node.status === "waiting"),
@@ -160,23 +160,23 @@ function RunHeader(props: { run: RunSnapshot; now: number }) {
         <text fg={statusColor(context.theme, props.run.status)} wrapMode="none">
           {glyph(props.run.status)}
         </text>
-        <text fg={context.theme.text.default} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text fg={context.theme.text.base} attributes={TextAttributes.BOLD} wrapMode="none">
           {props.run.workflow}
         </text>
         <text fg={statusColor(context.theme, props.run.status)} wrapMode="none">
           {props.run.status}
         </text>
-        <text fg={context.theme.text.subdued} wrapMode="none">
+        <text fg={context.theme.text.muted} wrapMode="none">
           {runElapsed(props.run, props.now)}
         </text>
       </box>
       <Show when={title()}>
-        <text fg={context.theme.text.subdued} wrapMode="none">
+        <text fg={context.theme.text.muted} wrapMode="none">
           {title()}
         </text>
       </Show>
       <Show when={props.run.error}>
-        <text fg={context.theme.text.feedback.error.default} wrapMode="word">
+        <text fg={context.theme.text.feedback.error.base} wrapMode="word">
           {props.run.error}
         </text>
       </Show>
@@ -191,10 +191,10 @@ function WorkflowGraph(props: {
 }) {
   const context = usePlugin()
   return (
-    <Show when={props.renderNode} fallback={<text fg={context.theme.text.subdued}>Diagram unavailable · step list remains available</text>}>
+    <Show when={props.renderNode} fallback={<text fg={context.theme.text.muted}>Diagram unavailable · step list remains available</text>}>
       <scrollbox maxHeight={props.fullscreen ? 18 : 12} scrollbarOptions={{ visible: false }}>
         <markdown
-          fg={context.theme.text.default}
+          fg={context.theme.text.base}
           syntaxStyle={SyntaxStyle.fromTheme([])}
           content={"```mermaid\n" + workflowMermaid(props.run) + "\n```"}
           renderNode={props.renderNode}
@@ -234,16 +234,16 @@ function NodeRow(props: {
             </text>
           }
         >
-          <spinner color={props.active ? fg() : context.theme.text.status.running} />
+          <spinner color={props.active ? fg() : context.theme.text.action.primary.base} />
         </Show>
       </box>
-      <text flexShrink={0} wrapMode="none" fg={props.active ? fg() : context.theme.text.subdued}>
+      <text flexShrink={0} wrapMode="none" fg={props.active ? fg() : context.theme.text.muted}>
         {typeGlyph(props.node.type)}
       </text>
       <text flexGrow={1} wrapMode="none" fg={fg()} attributes={props.active ? TextAttributes.BOLD : undefined}>
         {props.label}
       </text>
-      <text wrapMode="none" fg={props.active ? fg() : context.theme.text.subdued}>
+      <text wrapMode="none" fg={props.active ? fg() : context.theme.text.muted}>
         {rowTail(props.node, props.now)}
       </text>
     </box>
@@ -251,11 +251,11 @@ function NodeRow(props: {
 }
 
 function rowColor(theme: ReturnType<typeof usePlugin>["theme"], node: NodeSnapshot, live: boolean) {
-  if (node.status === "failed") return theme.text.feedback.error.default
-  if (node.status === "waiting") return theme.text.status.question
-  if (live || node.status === "running") return theme.text.status.running
-  if (node.status === "done") return theme.text.default
-  return theme.text.subdued
+  if (node.status === "failed") return theme.text.feedback.error.base
+  if (node.status === "waiting") return theme.text.feedback.warning.base
+  if (live || node.status === "running") return theme.text.action.primary.base
+  if (node.status === "done") return theme.text.base
+  return theme.text.muted
 }
 
 function statusColor(
@@ -264,16 +264,16 @@ function statusColor(
 ) {
   switch (status) {
     case "done":
-      return theme.text.feedback.success.default
+      return theme.text.feedback.success.base
     case "failed":
     case "cancelled":
-      return theme.text.feedback.error.default
+      return theme.text.feedback.error.base
     case "waiting":
-      return theme.text.status.question
+      return theme.text.feedback.warning.base
     case "running":
-      return theme.text.status.running
+      return theme.text.action.primary.base
     default:
-      return theme.text.subdued
+      return theme.text.muted
   }
 }
 

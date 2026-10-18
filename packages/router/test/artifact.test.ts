@@ -3,15 +3,21 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Host } from "@opencode/plugin/host"
+import { ensurePluginRuntime } from "@opencode/plugin/runtime"
 
-test("packed plugin loads outside the checkout without runtime SDK resolution", async () => {
+test("packed plugin loads outside the checkout with the host-provided Effect runtime", async () => {
   const root = join(tmpdir(), "opencode")
   mkdirSync(root, { recursive: true })
   const scratch = mkdtempSync(join(root, "router-packed-"))
   try {
+    ensurePluginRuntime()
     execFileSync(process.execPath, ["pm", "pack", "--destination", scratch], { cwd: join(import.meta.dir, ".."), stdio: "pipe" })
     execFileSync("tar", ["-xzf", join(scratch, "phall1-opencode-router-0.1.0.tgz"), "-C", scratch])
-    const entry = (await import(join(scratch, "package/server.js"))).default
+    const entry = (await Host.load(join(scratch, "package/server.js")) as { default: {
+      id: string;
+      setup(context: unknown): Promise<() => void>;
+    } }).default
     expect(entry.id).toBe("phall.router")
     const registered: string[] = []
     const cleanup = await entry.setup({ options: { enabled: false }, rpc: { register: async (definition: { id: string }) => registered.push(definition.id) } })
