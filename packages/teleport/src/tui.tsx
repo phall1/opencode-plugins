@@ -87,7 +87,31 @@ async function resolveOptions(context: Context): Promise<TeleportOptions> {
   const explicit = optionsOf(context.options)
   if (explicit.remotes !== undefined || explicit.local !== undefined) return explicit
   const documents = await Promise.resolve(context.client.config.get()).catch(() => undefined)
-  return mergeOptions(explicit, optionsFromConfig(documents, selfTargets()))
+  const targets = selfTargets()
+  // A git install keeps the configured spec (`github:…#sha::path:…#`) while the
+  // loaded package lives at its cache path. The server inventory maps this
+  // plugin's id to the spec that carried the options.
+  const inventory = await Promise.resolve(context.client.plugin.list()).catch(() => undefined)
+  targets.push(...targetsFromInventory(inventory, "phall.teleport"))
+  return mergeOptions(explicit, optionsFromConfig(documents, targets))
+}
+
+export function targetsFromInventory(inventory: unknown, id: string): string[] {
+  if (!inventory || typeof inventory !== "object") return []
+  const data = (inventory as { data?: unknown }).data
+  if (!Array.isArray(data)) return []
+  const result: string[] = []
+  for (const item of data) {
+    if (!item || typeof item !== "object") continue
+    const plugin = item as { id?: unknown; source?: unknown }
+    if (plugin.id !== id) continue
+    const source = plugin.source
+    if (!source || typeof source !== "object") continue
+    const value = source as { type?: unknown; target?: unknown; path?: unknown }
+    if (value.type === "package" && typeof value.target === "string") result.push(value.target)
+    if (value.type === "local" && typeof value.path === "string") result.push(value.path)
+  }
+  return result
 }
 
 function selfTargets(): string[] {

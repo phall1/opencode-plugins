@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
-import { runTeleport } from "../src/tui.tsx"
+import { runTeleport, targetsFromInventory } from "../src/tui.tsx"
 import type { Transfer } from "../src/types.ts"
 
 const fixture: Transfer = {
@@ -17,12 +17,16 @@ type Recorded = {
   focused: string[]
 }
 
-function fakeContext(recorded: Recorded, options: { remotes?: Record<string, unknown>; documents?: unknown } = {}) {
+function fakeContext(
+  recorded: Recorded,
+  options: { remotes?: Record<string, unknown>; documents?: unknown; inventory?: unknown } = {},
+) {
   const imports: { id: string; directory: string }[] = []
   const stored = new Map<string, Transfer>()
   const client = {
     server: { info: async () => ({ version: "2.2.5", urls: ["http://local"] }) },
     config: { get: async () => options.documents ?? [] },
+    plugin: { list: async () => options.inventory ?? { data: [] } },
     session: {
       list: async () => ({
         data: [{ id: "ses_local", title: "Local session", location: { directory: "/repo" }, time: { updated: 0 } }],
@@ -102,6 +106,29 @@ function recorded(): Recorded {
   return { alerts: [], toasts: [], selects: [], prompts: [], imports: [], focused: [] }
 }
 
+describe("targetsFromInventory", () => {
+  test("extracts package and local sources for this plugin id only", () => {
+    expect(
+      targetsFromInventory(
+        {
+          data: [
+            { id: "other.plugin", source: { type: "package", target: "github:other/repo" } },
+            { id: "phall.teleport", source: { type: "package", target: "github:phall1/repo#abc::path:packages/teleport" } },
+            { id: "phall.teleport", source: { type: "local", path: "/repo/packages/teleport" } },
+          ],
+        },
+        "phall.teleport",
+      ),
+    ).toEqual(["github:phall1/repo#abc::path:packages/teleport", "/repo/packages/teleport"])
+  })
+
+  test("tolerates missing or malformed inventory", () => {
+    expect(targetsFromInventory(undefined, "phall.teleport")).toEqual([])
+    expect(targetsFromInventory({ data: "nope" }, "phall.teleport")).toEqual([])
+    expect(targetsFromInventory({ data: [null, 1, {}] }, "phall.teleport")).toEqual([])
+  })
+})
+
 describe("TUI teleport flow", () => {
   test("no remotes explains how to configure them", async () => {
     const seen = recorded()
@@ -135,6 +162,16 @@ describe("TUI teleport flow", () => {
     const packageRoot = fileURLToPath(new URL("..", import.meta.url))
     const documents = [{ info: { plugins: [{ package: packageRoot, options: { remotes: { a: "http://remote:1" } } }] } }]
     await runTeleport(fakeContext(seen, { documents }), "remotes")
+    expect(seen.alerts.join("\n")).toContain("a  http://remote:1  OpenCode 2.2.5")
+  })
+
+  test("git install specs resolve through the plugin inventory", async () => {
+    globalThis.fetch = remoteFetch()
+    const seen = recorded()
+    const spec = "github:phall1/opencode-plugins#abc123::path:packages/teleport"
+    const documents = [{ info: { plugins: [{ package: spec, options: { remotes: { a: "http://remote:1" } } }] } }]
+    const inventory = { data: [{ id: "phall.teleport", source: { type: "package", target: spec } }] }
+    await runTeleport(fakeContext(seen, { documents, inventory }), "remotes")
     expect(seen.alerts.join("\n")).toContain("a  http://remote:1  OpenCode 2.2.5")
   })
 
