@@ -84,6 +84,6 @@ export function formatHelp(remoteNames: readonly string[]): string {
     "  /teleport pull <remote> <session>  copy a remote session here",
     "  /teleport push <remote> <session>  copy a session to a remote",
     "",
-    "Flags: --directory <path> (destination directory), --no-children, --skip-conflicts",
+    "Flags: --directory <path> (quote paths with spaces), --no-children, --skip-conflicts",
   ].join("\n")
 }

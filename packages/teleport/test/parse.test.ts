@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseCommand } from "../src/parse.ts"
+import { parseCommand, tokenize } from "../src/parse.ts"
 
 describe("parseCommand", () => {
   test("empty input is help", () => {
@@ -58,6 +58,32 @@ describe("parseCommand", () => {
       includeChildren: true,
       onConflict: "fail",
     })
+  })
+
+  test("quoted directory paths survive tokenization", () => {
+    expect(parseCommand('pull mini ses_1 --directory "/Users/phall/My Repo"')).toMatchObject({
+      action: "pull",
+      directory: "/Users/phall/My Repo",
+    })
+    expect(parseCommand("push mini --directory='/tmp/with space'")).toMatchObject({
+      action: "push",
+      directory: "/tmp/with space",
+    })
+    expect(parseCommand("sessions mini \"two words\"")).toMatchObject({ action: "sessions", query: "two words" })
+  })
+
+  test("tokenize keeps backslashes and handles unterminated quotes", () => {
+    expect(tokenize("a C:\\work\\repo")).toEqual(["a", "C:\\work\\repo"])
+    expect(tokenize('pull "unterminated')).toEqual(["pull", "unterminated"])
+    expect(tokenize("  pull   mini  ")).toEqual(["pull", "mini"])
+  })
+
+  test("a flag instead of a path is rejected", () => {
+    expect(parseCommand("pull mini ses_1 --directory --no-children")).toEqual({
+      action: "help",
+      note: "--directory needs a path",
+    })
+    expect(parseCommand("pull mini ses_1 --directory=")).toEqual({ action: "help", note: "--directory needs a path" })
   })
 
   test("missing remote or directory values never start a transfer", () => {

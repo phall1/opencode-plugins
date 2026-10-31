@@ -21,7 +21,7 @@ const DIRECTORY_FLAGS = new Set(["--directory", "--dir", "-d"])
  * so a typo never starts a transfer.
  */
 export function parseCommand(input: string): ActionRequest {
-  const tokens = input.trim().split(/\s+/).filter(Boolean)
+  const tokens = tokenize(input)
   if (tokens.length === 0) return { action: "help" }
   const positional: string[] = []
   let directory: string | undefined
@@ -30,12 +30,17 @@ export function parseCommand(input: string): ActionRequest {
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index]!
     if (DIRECTORY_FLAGS.has(token)) {
-      directory = tokens[++index]
-      if (directory === undefined) return { action: "help", note: `${token} needs a path` }
+      const value = tokens[++index]
+      if (value === undefined || value === "" || value.startsWith("--")) {
+        return { action: "help", note: `${token} needs a path` }
+      }
+      directory = value
       continue
     }
     if (token.startsWith("--directory=")) {
-      directory = token.slice("--directory=".length)
+      const value = token.slice("--directory=".length)
+      if (value === "") return { action: "help", note: "--directory needs a path" }
+      directory = value
       continue
     }
     if (token === "--no-children") {
@@ -74,4 +79,40 @@ export function parseCommand(input: string): ActionRequest {
     }
   }
   return { action: "help", note: `unknown command "${command}"` }
+}
+
+/**
+ * Split command text into arguments, keeping quoted segments intact so
+ * directories with spaces work. Backslashes stay literal, which keeps Windows
+ * paths usable.
+ */
+export function tokenize(input: string): string[] {
+  const tokens: string[] = []
+  let current = ""
+  let quoted = false
+  let quote: '"' | "'" | undefined
+  for (const character of input) {
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined
+      else current += character
+      continue
+    }
+    if (character === '"' || character === "'") {
+      quote = character
+      quoted = true
+      continue
+    }
+    if (character === " " || character === "\t" || character === "\n") {
+      if (quoted || current !== "") {
+        tokens.push(current)
+        current = ""
+        quoted = false
+      }
+      continue
+    }
+    current += character
+    quoted = true
+  }
+  if (quoted || current !== "") tokens.push(current)
+  return tokens
 }
