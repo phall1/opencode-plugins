@@ -95,7 +95,7 @@ async function confirmPlan(context: Context, options: TeleportOptions, request: 
   }
   const confirmed = await context.ui.dialog.confirm({
     title: request.action === "pull" ? "Pull sessions" : "Push sessions",
-    message: preview.text,
+    message: typeof preview.metadata.brief === "string" ? preview.metadata.brief : preview.text,
     label: { confirm: "Teleport", cancel: "Cancel" },
   })
   return confirmed === true
