@@ -141,7 +141,7 @@ does not have this limitation: it uses the already-authenticated client, so
 ## Development
 
 ```sh
-bun run check       # typecheck + 72 tests
+bun run check       # typecheck + 73 tests
 bun run e2e         # two real isolated OpenCode servers, real command-driven pull
 ```
 
