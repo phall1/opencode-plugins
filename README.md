@@ -30,6 +30,36 @@ workflows; ask for one explicitly or use `/workflow`.
 /workflow-graph
 ```
 
+### [`@phall1/opencode-teleport`](./packages/teleport)
+
+Move a complete session and its child-session tree between OpenCode servers.
+Builds on OpenCode 2.2's `experimental.session.export`/`import` primitives and
+adds remote discovery, the session tree, location remapping, idempotent
+conflict handling, and post-import verification. Agent tool, `/teleport`
+command, and an interactive TUI flow.
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "@phall1/opencode-teleport",
+      "options": { "remotes": { "mini": { "url": "http://host:49374", "passwordEnv": "MINI_PASSWORD" } } }
+    }
+  ]
+}
+```
+
+```
+/teleport                                   pull or push, guided
+/teleport pull mini ses_123 --directory .   explicit
+/teleport remotes                           probe servers
+```
+
+Transfers the transcript, not the working tree. Session IDs are preserved and
+existing sessions are never overwritten. See the
+[package README](./packages/teleport/README.md) for discovery, conflicts and
+verification semantics.
+
 ### [`@phall1/opencode-router`](./packages/router)
 
 Jev-powered automatic Code Mode discovery. Preloads relevant exact tool paths
@@ -42,8 +72,11 @@ for global deployment without npm preparation. See the package's
 ## Local development
 
 Router `0.1.1` and workflows `0.0.2` are validated with Bun `1.4.3`,
-OpenCode/SDK `2.0.32`, Effect `4.0.1`, OpenTUI `0.5.17`, and Solid `1.9.12`.
-Keep these host runtimes aligned. TypeScript stays at `5.9.3` because
+OpenCode/SDK `2.0.32` and Effect `4.0.1`. Teleport `0.1.0` targets OpenCode
+`2.2.5` and Effect `4.0.6` because session transfer endpoints appear there.
+Teleport pins OpenTUI `0.8.0` to match OpenCode `2.2.5`; workflows stays on
+`0.5.17`. Solid `1.9.12` is shared. Keep each package aligned with its target
+host. TypeScript stays at `5.9.3` because
 `opentui-spinner` and `bun-ffi-structs` require the `^5` peer range.
 The root overrides pair `seroval`/`seroval-plugins` at `1.6.9` for security
 and keep `@effect/platform-node-shared` at `4.0.1`: `4.0.5` requires Effect
