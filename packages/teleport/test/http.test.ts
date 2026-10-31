@@ -6,7 +6,13 @@ import type { Endpoint } from "../src/config.ts"
 const password = "s3cret"
 const expected = `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`
 
-type Seen = { path: string; query: URLSearchParams; body?: unknown; authorization?: string | null }
+type Seen = {
+  path: string
+  query: URLSearchParams
+  body?: unknown
+  authorization?: string | null
+  tested?: string | null
+}
 
 let server: ReturnType<typeof Bun.serve>
 let endpoint: Endpoint
@@ -22,8 +28,17 @@ beforeAll(() => {
     fetch: async (request) => {
       const url = new URL(request.url)
       const body = request.method === "POST" ? await request.json() : undefined
-      seen = { path: url.pathname, query: url.searchParams, body, authorization: request.headers.get("authorization") }
-      if (request.headers.get("authorization") !== expected) return json({ _tag: "UnauthorizedError" }, 401)
+      seen = {
+        path: url.pathname,
+        query: url.searchParams,
+        body,
+        authorization: request.headers.get("authorization"),
+        tested: request.headers.get("x-test"),
+      }
+      const authorization = request.headers.get("authorization")
+      if (authorization !== expected && authorization !== "Bearer custom") {
+        return json({ _tag: "UnauthorizedError" }, 401)
+      }
 
       if (url.pathname === "/api/info") return json({ version: "2.2.5", urls: ["http://fake.test"] })
 
@@ -41,6 +56,13 @@ beforeAll(() => {
           ],
           cursor: { next: "page-2" },
         })
+      }
+
+      const single = url.pathname.match(/^\/api\/session\/([^/]+)$/)
+      if (single) {
+        const id = decodeURIComponent(single[1]!)
+        if (id === "ses_missing") return json({ _tag: "SessionNotFoundError", message: "no such session" }, 404)
+        return json({ data: { id, title: "First", location: { directory: "/repo" }, time: { created: 1 } } })
       }
 
       const exported = url.pathname.match(/^\/api\/experimental\/session\/([^/]+)\/export$/)
@@ -74,6 +96,28 @@ describe("httpApi", () => {
     const api = httpApi(endpoint)
     expect(await api.health()).toEqual({ version: "2.2.5", url: "http://fake.test" })
     expect(seen.authorization).toBe(expected)
+  })
+
+  test("reads one session", async () => {
+    expect(await httpApi(endpoint).get("ses_1")).toEqual({
+      id: "ses_1",
+      title: "First",
+      parentID: undefined,
+      directory: "/repo",
+      created: 1,
+      updated: undefined,
+    })
+    await expect(httpApi(endpoint).get("ses_missing")).rejects.toMatchObject({ code: "not_found" })
+  })
+
+  test("sends configured headers and lets an explicit Authorization win over basic auth", async () => {
+    const api = httpApi({
+      ...endpoint,
+      headers: { authorization: "Bearer custom", "x-test": "yes" },
+    })
+    expect((await api.health()).version).toBe("2.2.5")
+    expect(seen.authorization).toBe("Bearer custom")
+    expect(seen.tested).toBe("yes")
   })
 
   test("maps list pages", async () => {

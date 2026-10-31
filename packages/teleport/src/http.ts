@@ -91,8 +91,9 @@ export function httpApi(endpoint: Endpoint, options: HttpApiOptions = {}): Serve
     for (const [key, value] of Object.entries(request.query ?? {})) {
       if (value !== undefined) url.searchParams.set(key, String(value))
     }
-    const headers: Record<string, string> = { accept: "application/json" }
-    const auth = authorization(endpoint)
+    const headers: Record<string, string> = { accept: "application/json", ...endpoint.headers }
+    const customAuthorization = Object.keys(headers).some((key) => key.toLowerCase() === "authorization")
+    const auth = customAuthorization ? undefined : authorization(endpoint)
     if (auth) headers.authorization = auth
     if (request.body !== undefined) headers["content-type"] = "application/json"
     let response: Response
@@ -128,6 +129,14 @@ export function httpApi(endpoint: Endpoint, options: HttpApiOptions = {}): Serve
         version: typeof body.version === "string" ? body.version : "unknown",
         url: Array.isArray(body.urls) && typeof body.urls[0] === "string" ? body.urls[0] : undefined,
       }
+    },
+    get: async (sessionID: string): Promise<SessionSummary> => {
+      const body = await request<{ data?: unknown }>(`/api/session/${encodeURIComponent(sessionID)}`)
+      const item = body.data
+      if (!item || typeof item !== "object") {
+        throw new TeleportError("failed", `${label} returned an invalid session`)
+      }
+      return summary(item as Record<string, unknown>)
     },
     list: async (input: ListInput = {}): Promise<ListPage> => {
       const body = await request<{ data?: unknown; cursor?: { next?: unknown } }>("/api/session", {

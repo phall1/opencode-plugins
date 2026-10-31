@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process"
 import { TeleportError } from "./errors.ts"
 
 export const REMOTES_ENV = "OPENCODE_TELEPORT_REMOTES"
@@ -11,12 +12,18 @@ export const DEFAULT_TIMEOUT_MS = 30_000
 export const MIN_TIMEOUT_MS = 1_000
 export const MAX_TIMEOUT_MS = 120_000
 
+/** A command whose stdout is the password. A string runs through `sh -c`; an array runs directly. */
+export type PasswordCommand = string | readonly string[]
+
 /** A remote may be written as a bare URL string or as an object with credentials. */
 export type RemoteDefinition = {
   readonly url: string
   readonly username?: string
   readonly password?: string
   readonly passwordEnv?: string
+  readonly passwordCommand?: PasswordCommand
+  /** Extra request headers, for example a reverse proxy or Cloudflare Access token. */
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 export type RemoteInput = RemoteDefinition | string
@@ -33,6 +40,7 @@ export type Endpoint = {
   readonly url: string
   readonly username: string
   readonly password?: string
+  readonly headers?: Readonly<Record<string, string>>
   readonly source?: string
 }
 
@@ -84,6 +92,52 @@ function definition(remote: RemoteInput, label: string): RemoteDefinition {
     username: typeof value.username === "string" ? value.username : undefined,
     password: typeof value.password === "string" ? value.password : undefined,
     passwordEnv: typeof value.passwordEnv === "string" ? value.passwordEnv : undefined,
+    passwordCommand: passwordCommandOf(value.passwordCommand, label),
+    headers: headersOf(value.headers, label),
+  }
+}
+
+function passwordCommandOf(value: unknown, label: string): PasswordCommand | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === "string") {
+    if (!value.trim()) throw new TeleportError("invalid", `${label}.passwordCommand is empty`)
+    return value
+  }
+  if (Array.isArray(value) && value.length > 0 && value.every((part) => typeof part === "string")) {
+    return value as string[]
+  }
+  throw new TeleportError("invalid", `${label}.passwordCommand must be a string or a non-empty string array`)
+}
+
+function headersOf(value: unknown, label: string): Readonly<Record<string, string>> | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value)) throw new TeleportError("invalid", `${label}.headers must be an object`)
+  const headers: Record<string, string> = {}
+  for (const [key, header] of Object.entries(value)) {
+    if (typeof header !== "string") throw new TeleportError("invalid", `${label}.headers.${key} must be a string`)
+    headers[key] = header
+  }
+  return headers
+}
+
+function runPasswordCommand(command: PasswordCommand, name: string): string {
+  const [file, args] = typeof command === "string" ? ["/bin/sh", ["-c", command] as string[]] : [command[0]!, command.slice(1)]
+  try {
+    const output = execFileSync(file, args, {
+      encoding: "utf8",
+      timeout: 10_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+    const value = output.trim()
+    if (!value) throw new TeleportError("not_configured", `passwordCommand for ${name} printed nothing`)
+    return value
+  } catch (cause) {
+    if (cause instanceof TeleportError) throw cause
+    throw new TeleportError(
+      "not_configured",
+      `passwordCommand for ${name} failed`,
+      cause instanceof Error ? cause.message : String(cause),
+    )
   }
 }
 
@@ -104,6 +158,7 @@ function remotePassword(name: string, definition: RemoteDefinition, env: Env): s
     }
     return value
   }
+  if (definition.passwordCommand !== undefined) return runPasswordCommand(definition.passwordCommand, name)
   return env[remotePasswordEnv(name)] ?? env[PASSWORD_ENV]
 }
 
@@ -148,6 +203,7 @@ export function resolveRemote(name: string, definitions: Map<string, RemoteDefin
     url: normalizeUrl(definition.url, `Remote "${name}"`),
     username: definition.username ?? "opencode",
     password: remotePassword(name, definition, env),
+    headers: definition.headers,
     source: "config",
   }
 }
@@ -160,6 +216,7 @@ export function resolveLocalEndpoint(options: TeleportOptions, env: Env): Endpoi
       url: normalizeUrl(local.url, "local"),
       username: local.username ?? "opencode",
       password: remotePassword("local", local, env),
+      headers: local.headers,
       source: "options",
     }
   }

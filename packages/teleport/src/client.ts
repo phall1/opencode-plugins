@@ -17,6 +17,7 @@ export type ClientLike = {
     readonly list: () => Promise<unknown>
   }
   readonly session: {
+    readonly get: (input: any) => Promise<unknown>
     readonly list: (input?: any) => Promise<{
       readonly data?: readonly unknown[]
       readonly cursor?: { readonly next?: string | null }
@@ -53,6 +54,11 @@ export function clientApi(client: ClientLike, label = "This server"): ServerApi 
     health: async (): Promise<ServerHealth> => {
       const info = await client.server.info()
       return { version: info.version ?? "unknown", url: info.urls?.[0] }
+    },
+    get: async (sessionID: string): Promise<SessionSummary> => {
+      const item = summary(await client.session.get({ sessionID }))
+      if (!item) throw new TeleportError("not_found", `${label} has no session ${sessionID}`)
+      return item
     },
     list: async (input: ListInput = {}): Promise<ListPage> => {
       const page = await client.session.list({

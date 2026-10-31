@@ -109,6 +109,67 @@ describe("remote passwords", () => {
   })
 })
 
+describe("passwordCommand", () => {
+  test("array commands run directly and stdout is trimmed", () => {
+    const definitions = remoteDefinitions(
+      { remotes: { mini: { url: "http://mini:1", passwordCommand: ["/bin/sh", "-c", "printf ' from-command \\n'"] } } },
+      {},
+    )
+    expect(resolveRemote("mini", definitions, {}).password).toBe("from-command")
+  })
+
+  test("string commands run through the shell", () => {
+    const definitions = remoteDefinitions(
+      { remotes: { mini: { url: "http://mini:1", passwordCommand: "printf shell-secret" } } },
+      {},
+    )
+    expect(resolveRemote("mini", definitions, {}).password).toBe("shell-secret")
+  })
+
+  test("failures and empty output are configuration errors", () => {
+    const failing = remoteDefinitions(
+      { remotes: { mini: { url: "http://mini:1", passwordCommand: ["/bin/sh", "-c", "exit 3"] } } },
+      {},
+    )
+    expect(status(() => resolveRemote("mini", failing, {}))).toBe("not_configured")
+
+    const empty = remoteDefinitions(
+      { remotes: { mini: { url: "http://mini:1", passwordCommand: "true" } } },
+      {},
+    )
+    expect(status(() => resolveRemote("mini", empty, {}))).toBe("not_configured")
+  })
+
+  test("inline and environment passwords still win", () => {
+    const definitions = remoteDefinitions(
+      { remotes: { mini: { url: "http://mini:1", password: "inline", passwordCommand: "printf nope" } } },
+      {},
+    )
+    expect(resolveRemote("mini", definitions, {}).password).toBe("inline")
+  })
+})
+
+describe("request headers", () => {
+  test("are validated and carried to the endpoint", () => {
+    const definitions = remoteDefinitions(
+      { remotes: { mini: { url: "http://mini:1", headers: { "cf-access-client-id": "abc" } } } },
+      {},
+    )
+    expect(resolveRemote("mini", definitions, {}).headers).toEqual({ "cf-access-client-id": "abc" })
+  })
+
+  test("reject non-string values", () => {
+    expect(
+      status(() =>
+        remoteDefinitions(
+          { remotes: { mini: { url: "http://mini:1", headers: { bad: 1 } } } as never },
+          {},
+        ),
+      ),
+    ).toBe("invalid")
+  })
+})
+
 describe("resolveLocalEndpoint", () => {
   test("options win over the environment", () => {
     const endpoint = resolveLocalEndpoint(

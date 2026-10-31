@@ -26,6 +26,7 @@ describe("requestOf", () => {
       directory: undefined,
       includeChildren: true,
       onConflict: "fail",
+      dryRun: false,
     })
     expect(
       requestOf(input({ action: "push", remote: "mini", includeChildren: false, onConflict: "skip" })),
@@ -36,6 +37,7 @@ describe("requestOf", () => {
       directory: undefined,
       includeChildren: false,
       onConflict: "skip",
+      dryRun: false,
     })
   })
 

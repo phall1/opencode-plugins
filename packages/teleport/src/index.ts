@@ -15,6 +15,7 @@ const ToolInput = Schema.Struct({
   directory: Schema.optional(Schema.String),
   includeChildren: Schema.optional(Schema.Boolean),
   onConflict: Schema.optional(Schema.Literals(["skip", "fail"])),
+  dryRun: Schema.optional(Schema.Boolean),
 })
 
 type ToolInput = typeof ToolInput.Type
@@ -33,6 +34,7 @@ export function requestOf(input: ToolInput): ActionRequest {
     directory: input.directory,
     includeChildren: input.includeChildren ?? true,
     onConflict: input.onConflict ?? "fail",
+    dryRun: input.dryRun ?? false,
   }
 }
 
@@ -68,7 +70,8 @@ export default Plugin.define({
             "Copy a complete OpenCode session, including its child-session tree, between OpenCode servers. " +
             "Use only when the user explicitly asks to teleport, transfer or copy a session to another server. " +
             "Actions: remotes (probe configured servers), sessions (list sessions on a remote), " +
-            "pull (copy a remote session to this server), push (copy this server's session to a remote).",
+            "pull (copy a remote session to this server), push (copy this server's session to a remote). " +
+            "Set dryRun to preview the session tree without moving data.",
           input: ToolInput,
           execute: (input, context) =>
             run(requestOf(input), context.sessionID).pipe(

@@ -7,8 +7,8 @@ import {
 } from "./config.ts"
 import { httpApi } from "./http.ts"
 import type { ActionRequest } from "./parse.ts"
-import { formatHelp, formatRemotes, formatReport, formatSessions } from "./report.ts"
-import { listAll, teleport } from "./transfer.ts"
+import { formatHelp, formatPlan, formatRemotes, formatReport, formatSessions } from "./report.ts"
+import { listAll, planTransfer, teleport } from "./transfer.ts"
 import type { ServerApi } from "./types.ts"
 
 export type ActionDeps = {
@@ -122,11 +122,15 @@ async function dispatch(request: ActionRequest, deps: ActionDeps): Promise<Actio
       }
       const source = remote(request.remote)
       const destination = local()
+      const directory = request.directory ?? deps.defaultDirectory
+      if (request.dryRun) {
+        return preview({ source, destination, sessionID: request.sessionID, directory, request })
+      }
       const report = await teleport({
         source,
         destination,
         sessionID: request.sessionID,
-        directory: request.directory ?? deps.defaultDirectory,
+        directory,
         includeChildren: request.includeChildren,
         onConflict: request.onConflict,
       })
@@ -144,6 +148,15 @@ async function dispatch(request: ActionRequest, deps: ActionDeps): Promise<Actio
       }
       const source = local()
       const destination = remote(request.remote)
+      if (request.dryRun) {
+        return preview({
+          source,
+          destination,
+          sessionID,
+          directory: request.directory,
+          request,
+        })
+      }
       const report = await teleport({
         source,
         destination,
@@ -158,6 +171,32 @@ async function dispatch(request: ActionRequest, deps: ActionDeps): Promise<Actio
         metadata: { action: "push", remote: request.remote, sessionID, ...counts(report) },
       }
     }
+  }
+}
+
+async function preview(input: {
+  source: ServerApi
+  destination: ServerApi
+  sessionID: string
+  directory: string | undefined
+  request: { action: "pull" | "push"; remote: string; includeChildren: boolean }
+}): Promise<ActionResult> {
+  const plan = await planTransfer({
+    source: input.source,
+    sessionID: input.sessionID,
+    includeChildren: input.request.includeChildren,
+  })
+  return {
+    ok: true,
+    text: formatPlan(plan, input.source.label, input.destination.label, input.directory),
+    metadata: {
+      action: input.request.action,
+      dryRun: true,
+      remote: input.request.remote,
+      sessionID: input.sessionID,
+      sessions: plan.sessions,
+      truncated: plan.truncated,
+    },
   }
 }
 

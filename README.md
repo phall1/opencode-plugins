@@ -72,7 +72,7 @@ for global deployment without npm preparation. See the package's
 ## Local development
 
 Router `0.1.1` and workflows `0.0.2` are validated with Bun `1.4.3`,
-OpenCode/SDK `2.0.32` and Effect `4.0.1`. Teleport `0.1.1` targets OpenCode
+OpenCode/SDK `2.0.32` and Effect `4.0.1`. Teleport `0.2.0` targets OpenCode
 `2.2.5` and Effect `4.0.6` because session transfer endpoints appear there.
 Teleport pins OpenTUI `0.8.0` to match OpenCode `2.2.5`; workflows stays on
 `0.5.17`. Solid `1.9.12` is shared. Keep each package aligned with its target

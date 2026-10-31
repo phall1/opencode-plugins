@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import { TeleportError } from "../src/errors.ts"
-import { listAll, teleport } from "../src/transfer.ts"
-import type { ListInput, ListPage, ServerApi, ServerHealth, SessionInfo, Transfer } from "../src/types.ts"
+import { listAll, planTransfer, teleport } from "../src/transfer.ts"
+import type {
+  ListInput,
+  ListPage,
+  ServerApi,
+  ServerHealth,
+  SessionInfo,
+  SessionSummary,
+  Transfer,
+} from "../src/types.ts"
 
 type Stored = {
   readonly info: SessionInfo
@@ -34,6 +42,16 @@ class FakeServer implements ServerApi {
 
   async health(): Promise<ServerHealth> {
     return { version: "2.2.5" }
+  }
+
+  async get(sessionID: string): Promise<SessionSummary> {
+    const stored = this.sessions.get(sessionID)
+    if (!stored) throw new TeleportError("not_found", `missing ${sessionID}`)
+    return {
+      id: sessionID,
+      title: stored.info.title,
+      directory: stored.info.location?.directory,
+    }
   }
 
   async list(input: ListInput = {}): Promise<ListPage> {
@@ -231,6 +249,37 @@ describe("teleport", () => {
 
     await expect(teleport({ source, destination, sessionID: "root" })).rejects.toBeInstanceOf(TeleportError)
     await expect(teleport({ source, destination, sessionID: "root", directory: "/work" })).resolves.toBeDefined()
+  })
+})
+
+describe("planTransfer", () => {
+  test("walks the tree without importing", async () => {
+    const source = new FakeServer()
+    source.add("root")
+    source.add("child", { parentID: "root" })
+    source.add("grandchild", { parentID: "child" })
+
+    const plan = await planTransfer({ source, sessionID: "root" })
+
+    expect(plan.sessions).toBe(3)
+    expect(plan.truncated).toBe(false)
+    expect(plan.root.children[0]?.children[0]?.id).toBe("grandchild")
+  })
+
+  test("honours includeChildren and the session limit", async () => {
+    const source = new FakeServer()
+    source.add("root")
+    source.add("a", { parentID: "root" })
+    source.add("b", { parentID: "root" })
+
+    expect((await planTransfer({ source, sessionID: "root", includeChildren: false })).sessions).toBe(1)
+    const limited = await planTransfer({ source, sessionID: "root", maxSessions: 2 })
+    expect(limited.sessions).toBe(2)
+    expect(limited.truncated).toBe(true)
+  })
+
+  test("surfaces a missing session", async () => {
+    await expect(planTransfer({ source: new FakeServer(), sessionID: "nope" })).rejects.toBeInstanceOf(TeleportError)
   })
 })
 

@@ -46,6 +46,7 @@ export interface ServerApi {
   readonly label: string
   /** Base URL when the surface knows it, for diagnostics. */
   readonly url?: string
+  readonly get: (sessionID: string) => Promise<SessionSummary>
   readonly list: (input?: ListInput) => Promise<ListPage>
   readonly export: (sessionID: string) => Promise<Transfer>
   readonly import: (data: Transfer, directory: string) => Promise<SessionInfo>
