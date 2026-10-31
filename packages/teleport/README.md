@@ -3,11 +3,13 @@
 Move a complete OpenCode session — and its whole child-session tree — from one
 OpenCode server to another, from inside OpenCode, without leaving the TUI.
 
+Pin the package from this repo, the same way the other plugins are installed:
+
 ```jsonc
 {
   "plugins": [
     {
-      "package": "@phall1/opencode-teleport",
+      "package": "github:phall1/opencode-plugins#<commit>::path:packages/teleport",
       "options": {
         "remotes": {
           "mini": {
@@ -21,9 +23,8 @@ OpenCode server to another, from inside OpenCode, without leaving the TUI.
 }
 ```
 
-```sh
-opencode plugin add @phall1/opencode-teleport
-```
+`opencode plugin add "github:phall1/opencode-plugins#<commit>::path:packages/teleport"`
+writes the same entry. The package is not published to npm.
 
 ## What actually transfers
 
