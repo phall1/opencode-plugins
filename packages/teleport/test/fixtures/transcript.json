@@ -1,0 +1,85 @@
+{
+  "info": {
+    "id": "ses_e6d10b670ffepEITt5twLjRb7X",
+    "projectID": "151d251ba61ec81668f58626bdbdda364d64bc00",
+    "cost": 0,
+    "tokens": {
+      "input": 13600,
+      "output": 9,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1793466517904,
+      "updated": 1793466521098,
+      "busy": 1793466517920,
+      "idle": 1793466521104
+    },
+    "title": "teleport-probe",
+    "subpath": "../../../tmp/teleport-src",
+    "location": {
+      "directory": "/tmp/teleport-src"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_192ef499c001ltjzKmWhdNzSA8",
+      "time": {
+        "created": 1793466518353
+      },
+      "text": "hello from probe",
+      "type": "synthetic"
+    },
+    {
+      "id": "msg_192ef4b57001tjVfqNRP2iWiUl",
+      "time": {
+        "created": 1793466518362,
+        "streamed": 1793466521094,
+        "completed": 1793466521098
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "gpt-6.1-sol",
+        "providerID": "openai"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello! Probe received.",
+          "native": {
+            "itemId": "msg_05ba177db644c99c016ae620989844819e8d7286f68161ff4f",
+            "phase": "final_answer"
+          }
+        }
+      ],
+      "finish": "stop",
+      "native": {
+        "responseId": "resp_05ba177db644c99c016ae620975bfc819e833c2b4688c252d5",
+        "serviceTier": "default"
+      },
+      "cost": 0,
+      "tokens": {
+        "input": 13600,
+        "output": 9,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_192ef5610001In8V2JxPFUmDEQ",
+      "time": {
+        "created": 1793466521104
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

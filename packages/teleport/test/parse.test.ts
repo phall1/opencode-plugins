@@ -1,0 +1,67 @@
+import { describe, expect, test } from "bun:test"
+import { parseCommand } from "../src/parse.ts"
+
+describe("parseCommand", () => {
+  test("empty input is help", () => {
+    expect(parseCommand("   ")).toEqual({ action: "help" })
+  })
+
+  test("remotes and help", () => {
+    expect(parseCommand("remotes")).toEqual({ action: "remotes" })
+    expect(parseCommand("help")).toEqual({ action: "help" })
+    expect(parseCommand("nonsense")).toEqual({ action: "help", note: 'unknown command "nonsense"' })
+  })
+
+  test("sessions accepts an optional remote and query", () => {
+    expect(parseCommand("sessions")).toEqual({ action: "sessions", remote: undefined, query: undefined })
+    expect(parseCommand("sessions mini")).toEqual({ action: "sessions", remote: "mini", query: undefined })
+    expect(parseCommand("sessions mini failing tests")).toEqual({
+      action: "sessions",
+      remote: "mini",
+      query: "failing tests",
+    })
+  })
+
+  test("pull parses flags in any position", () => {
+    expect(parseCommand("pull mini ses_123")).toEqual({
+      action: "pull",
+      remote: "mini",
+      sessionID: "ses_123",
+      directory: undefined,
+      includeChildren: true,
+      onConflict: "fail",
+    })
+    expect(parseCommand("pull --skip-conflicts --no-children --directory /work mini ses_123")).toEqual({
+      action: "pull",
+      remote: "mini",
+      sessionID: "ses_123",
+      directory: "/work",
+      includeChildren: false,
+      onConflict: "skip",
+    })
+    expect(parseCommand("pull mini ses_123 --directory=/srv/repo")).toEqual({
+      action: "pull",
+      remote: "mini",
+      sessionID: "ses_123",
+      directory: "/srv/repo",
+      includeChildren: true,
+      onConflict: "fail",
+    })
+  })
+
+  test("push allows the session to be filled in later", () => {
+    expect(parseCommand("push mini")).toEqual({
+      action: "push",
+      remote: "mini",
+      sessionID: undefined,
+      directory: undefined,
+      includeChildren: true,
+      onConflict: "fail",
+    })
+  })
+
+  test("missing remote or directory values never start a transfer", () => {
+    expect(parseCommand("pull")).toEqual({ action: "help", note: "/pull needs a remote name" })
+    expect(parseCommand("pull mini ses_1 --directory")).toEqual({ action: "help", note: "--directory needs a path" })
+  })
+})

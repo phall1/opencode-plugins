@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@phall1/opencode-teleport",
+  "version": "0.1.0",
+  "description": "Teleport complete OpenCode V2 sessions and their child-session trees between servers",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phall1/opencode-plugins.git",
+    "directory": "packages/teleport"
+  },
+  "homepage": "https://github.com/phall1/opencode-plugins/tree/main/packages/teleport",
+  "bugs": "https://github.com/phall1/opencode-plugins/issues",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "session",
+    "teleport",
+    "transfer"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./tui": "./src/tui.tsx"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "check": "bun run typecheck && bun run test",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "e2e": "bun run scripts/e2e.ts"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.2.5"
+  },
+  "peerDependencies": {
+    "@opentui/core": ">=0.8.0",
+    "@opentui/solid": ">=0.8.0",
+    "effect": "^4.0.6",
+    "solid-js": ">=1.9.0"
+  },
+  "devDependencies": {
+    "@opencode/theme": "2.2.5",
+    "@opentui/core": "0.8.0",
+    "@opentui/solid": "0.8.0",
+    "@tsconfig/bun": "1.0.11",
+    "effect": "4.0.6",
+    "solid-js": "1.9.12"
+  }
+}
