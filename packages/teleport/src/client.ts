@@ -13,6 +13,9 @@ export type ClientLike = {
   readonly config: {
     readonly get: () => Promise<unknown>
   }
+  readonly plugin: {
+    readonly list: () => Promise<unknown>
+  }
   readonly session: {
     readonly list: (input?: any) => Promise<{
       readonly data?: readonly unknown[]
