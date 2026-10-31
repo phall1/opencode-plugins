@@ -7,7 +7,7 @@ import {
 } from "./config.ts"
 import { httpApi } from "./http.ts"
 import type { ActionRequest } from "./parse.ts"
-import { formatHelp, formatPlan, formatRemotes, formatReport, formatSessions } from "./report.ts"
+import { formatHelp, formatPlan, formatPlanBrief, formatRemotes, formatReport, formatSessions } from "./report.ts"
 import { listAll, planTransfer, teleport } from "./transfer.ts"
 import type { ServerApi } from "./types.ts"
 
@@ -196,6 +196,7 @@ async function preview(input: {
       sessionID: input.sessionID,
       sessions: plan.sessions,
       truncated: plan.truncated,
+      brief: formatPlanBrief(plan, input.source.label, input.destination.label, input.directory),
     },
   }
 }

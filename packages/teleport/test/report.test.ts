@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   formatHelp,
   formatPlan,
+  formatPlanBrief,
   formatRemotes,
   formatReport,
   formatSessionLine,
@@ -101,6 +102,33 @@ describe("formatPlan", () => {
     const text = formatPlan({ ...plan, truncated: true }, "a", "b", undefined)
     expect(text).toContain("destination: each session's own directory")
     expect(text).toContain("(truncated)")
+  })
+})
+
+describe("formatPlanBrief", () => {
+  const plan = {
+    root: { id: "ses_root", title: "Root", directory: "/remote/repo", children: [] },
+    sessions: 3,
+    truncated: false,
+  }
+
+  test("stays short for confirmation dialogs", () => {
+    const text = formatPlanBrief(plan, 'Remote "mini"', "This server", "/work/repo")
+    expect(text.split("\n")).toHaveLength(3)
+    expect(text).toContain("3 sessions, destination /work/repo")
+    expect(text).toContain("Root (ses_root) + 2 child sessions")
+  })
+
+  test("omits the child suffix for a single session and truncates long titles", () => {
+    const text = formatPlanBrief(
+      { root: { id: "ses_1", title: "x".repeat(80), children: [] }, sessions: 1, truncated: false },
+      "a",
+      "b",
+      undefined,
+    )
+    expect(text).not.toContain("child session")
+    expect(text).toContain("…")
+    expect(text).toContain("destination: each session's own directory")
   })
 })
 

@@ -161,7 +161,7 @@ describe("TUI teleport flow", () => {
     expect(seen.prompts).toEqual(["directory"])
     expect(seen.confirms).toHaveLength(1)
     expect(seen.confirms[0]).toContain("Plan: Remote \"a\" → This server")
-    expect(seen.confirms[0]).toContain("ses_remote  Remote fixture")
+    expect(seen.confirms[0]).toContain("Remote fixture (ses_remote)")
     expect(seen.imports).toEqual([{ id: "ses_remote", directory: "/work/repo" }])
     expect(seen.toasts).toContain("Teleporting session here…")
     expect(seen.focused).toEqual(["ses_remote"])

@@ -70,6 +70,29 @@ export function formatRemotes(
   return lines.join("\n")
 }
 
+/** Compact form for confirmation dialogs, where a whole tree does not fit. */
+export function formatPlanBrief(
+  plan: TransferPlan,
+  from: string,
+  to: string,
+  directory: string | undefined,
+): string {
+  const destination = directory ? `destination ${directory}` : "destination: each session's own directory"
+  const title = plan.root.title?.trim()
+  const root = title ? `  ${truncate(title, 48)} (${plan.root.id})` : `  ${plan.root.id}`
+  const children = plan.sessions - 1
+  const suffix = children > 0 ? ` + ${children} child session${children === 1 ? "" : "s"}` : ""
+  return [
+    `Plan: ${from} → ${to}`,
+    `  ${plan.sessions} session${plan.sessions === 1 ? "" : "s"}${plan.truncated ? " (truncated)" : ""}, ${destination}`,
+    root + suffix,
+  ].join("\n")
+}
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value
+}
+
 export function formatPlan(plan: TransferPlan, from: string, to: string, directory: string | undefined): string {
   const destination = directory ? `destination ${directory}` : "destination: each session's own directory"
   const lines = [
