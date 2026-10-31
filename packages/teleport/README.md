@@ -43,6 +43,54 @@ destination is a conflict, never a silent overwrite. Export contains settled
 messages, so an in-flight turn is not part of the transfer; pull it after the
 turn finishes.
 
+## Transport and authentication
+
+Teleport is a client of OpenCode's own HTTP API; there is no side channel and no
+custom server component.
+
+```
+  /teleport pull            ┌──────────────┐        ┌──────────────┐
+  server plugin / TUI ─────►│  this server │        │ remote server│
+                            │  /api/session│        │  /api/session│
+                            │  export/import        │  export/import
+                            └──────┬───────┘        └──────▲───────┘
+                                   │  export transcript    │ import transcript
+                                   └─────── HTTP(S) ────────┘
+```
+
+| Call | Endpoint |
+| --- | --- |
+| health | `GET /api/info` |
+| session metadata (plan) | `GET /api/session/:id` |
+| tree listing | `GET /api/session?parentID=…` |
+| export | `GET /api/experimental/session/:id/export` |
+| import | `POST /api/experimental/session/import` |
+
+Bodies are JSON. Media travels inline inside the transcript, so a large image
+makes a large request; the default per-request timeout is 30 seconds and is
+configurable. The local server is only contacted over HTTP by the server-side
+tool; the TUI uses the already-authenticated in-process client instead.
+
+Authentication is the server's normal HTTP Basic lease credential, username
+`opencode`. There are no forged tokens and no separate teleport secret. A
+remote password resolves in this order:
+
+1. `password` in the remote definition
+2. `passwordEnv` (an error if the variable is missing)
+3. `passwordCommand`: stdout of a command, trimmed. A string runs through
+   `sh -c`; an array runs directly. This keeps secrets out of config files.
+4. `OPENCODE_TELEPORT_<NAME>_PASSWORD`
+5. `OPENCODE_TELEPORT_PASSWORD`
+
+Extra `headers` are sent with every request, which covers reverse proxies and
+Cloudflare Access service tokens; an explicit `Authorization` header replaces
+Basic auth. TLS is whatever the URL gives you: an `https://` tunnel or proxy is
+encrypted, a bare `http://tailnet-ip:port` is not.
+
+Failures map to the real cause: `401/403` credentials, `404` a missing session
+or a server too old to expose the transfer endpoints, `409` an existing
+session, a transport error unreachable. Passwords are never logged or printed.
+
 ## Why this plugin exists
 
 OpenCode 2.2 already ships the primitives: `experimental.session.export`,
@@ -66,6 +114,9 @@ the mini"), never for ordinary work.
 | `pull` | copy a remote session and its children here |
 | `push` | copy a session and its children to a remote |
 
+Pass `dryRun` (or `--plan` on the command) to get the same tree preview the TUI
+confirmation uses, without moving data.
+
 ```
 teleport action=pull remote=mini sessionID=ses_... directory=/path/to/repo
 teleport action=push remote=mini sessionID=ses_...
@@ -84,6 +135,7 @@ make retries idempotent.
 /teleport pull mini ses_123 --directory /repo
 /teleport pull mini ses_123 --directory "/Users/me/My Repo"
 /teleport push mini ses_123 --no-children --skip-conflicts
+/teleport pull --plan mini ses_123      # preview the tree, move nothing
 ```
 
 Quote a path containing spaces, exactly as the flags line in `/teleport`
@@ -92,19 +144,35 @@ help says.
 ### TUI
 
 `/teleport` with no arguments walks a dialog: pull or push, which server, which
-session (searchable), which destination directory. The imported session opens
-in a tab. Failures and reports come back as dialogs, not as chat turns.
+session (searchable), which destination directory. Before anything moves it
+shows a plan — every session in the tree, the destination — and waits for
+confirmation. The imported session opens in a tab. Failures and reports come
+back as dialogs, not as chat turns. Pushing lists sessions from the current
+project first.
 
 ## Configuration
 
 | Key | Meaning |
 | --- | --- |
-| `remotes` | `{ name: url }` or `{ name: { url, username?, password?, passwordEnv? } }` |
+| `remotes` | `{ name: url }` or `{ name: { url, username?, password?, passwordEnv?, passwordCommand?, headers? } }` |
 | `local` | optional override for this server: `url`, `username`, `passwordEnv` |
 | `timeoutMs` | per-request timeout, default 30000, clamped to 1s–120s |
 
+```jsonc
+{
+  "remotes": {
+    "mini": {
+      "url": "https://mini.tailnet.ts.net:49374",
+      "passwordCommand": ["op", "read", "op://Private/opencode-mini/password"],
+      "headers": { "cf-access-client-id": "…" }
+    }
+  }
+}
+```
+
 Remote passwords resolve in order: `password`, then `passwordEnv`, then
-`OPENCODE_TELEPORT_<NAME>_PASSWORD`, then `OPENCODE_TELEPORT_PASSWORD`.
+`passwordCommand` (stdout, trimmed), then `OPENCODE_TELEPORT_<NAME>_PASSWORD`,
+then `OPENCODE_TELEPORT_PASSWORD`.
 `OPENCODE_TELEPORT_REMOTES` accepts the same object as JSON, which is handy
 when the config file is not yours:
 
@@ -146,7 +214,7 @@ does not have this limitation: it uses the already-authenticated client, so
 ## Development
 
 ```sh
-bun run check       # typecheck + 79 tests
+bun run check       # typecheck + 95 tests
 bun run e2e         # two real isolated OpenCode servers, real command-driven pull
 ```
 

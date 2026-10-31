@@ -29,6 +29,26 @@ export type TransferReport = {
   readonly durationMs: number
 }
 
+export type PlanNode = {
+  readonly id: string
+  readonly title?: string
+  readonly directory?: string
+  readonly children: readonly PlanNode[]
+}
+
+export type TransferPlan = {
+  readonly root: PlanNode
+  readonly sessions: number
+  readonly truncated: boolean
+}
+
+export type PlanOptions = {
+  readonly source: ServerApi
+  readonly sessionID: string
+  readonly includeChildren?: boolean
+  readonly maxSessions?: number
+}
+
 export type TransferOptions = {
   readonly source: ServerApi
   readonly destination: ServerApi
@@ -71,6 +91,40 @@ function messageIDs(messages: readonly unknown[]): string[] {
 
 function sameSequence(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+/**
+ * Walk a session tree without transferring anything. Metadata only: the
+ * preview costs one `get` per root plus one `list` per parent.
+ */
+export async function planTransfer(options: PlanOptions): Promise<TransferPlan> {
+  const includeChildren = options.includeChildren ?? true
+  const maxSessions = Math.max(1, Math.min(2_000, options.maxSessions ?? DEFAULT_MAX_SESSIONS))
+  const visited = new Set<string>()
+  let sessions = 0
+  let truncated = false
+
+  async function visit(sessionID: string, known?: SessionSummary): Promise<PlanNode> {
+    visited.add(sessionID)
+    sessions++
+    const info = known ?? (await options.source.get(sessionID))
+    const children: PlanNode[] = []
+    if (includeChildren) {
+      const found = await listAll(options.source, { parentID: sessionID }, maxSessions)
+      for (const child of found) {
+        if (visited.has(child.id)) continue
+        if (sessions >= maxSessions) {
+          truncated = true
+          break
+        }
+        children.push(await visit(child.id, child))
+      }
+    }
+    return { id: sessionID, title: info.title, directory: info.directory, children }
+  }
+
+  const root = await visit(options.sessionID)
+  return { root, sessions, truncated }
 }
 
 /**

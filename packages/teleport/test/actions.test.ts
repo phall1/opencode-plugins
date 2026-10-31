@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import { runAction, type ActionDeps } from "../src/actions.ts"
 import { TeleportError } from "../src/errors.ts"
-import type { ListInput, ListPage, ServerApi, ServerHealth, SessionInfo, Transfer } from "../src/types.ts"
+import type {
+  ListInput,
+  ListPage,
+  ServerApi,
+  ServerHealth,
+  SessionInfo,
+  SessionSummary,
+  Transfer,
+} from "../src/types.ts"
 
 const transfer: Transfer = {
   info: { id: "ses_remote", title: "Remote session", location: { directory: "/remote/repo" } },
@@ -17,6 +25,16 @@ class LocalServer implements ServerApi {
 
   async health(): Promise<ServerHealth> {
     return { version: "2.2.5" }
+  }
+
+  async get(sessionID: string): Promise<SessionSummary> {
+    const found = this.sessions.get(sessionID)
+    if (!found) throw new TeleportError("not_found", "missing")
+    return {
+      id: found.info.id,
+      title: found.info.title,
+      directory: found.info.location?.directory,
+    }
   }
 
   async list(input: ListInput = {}): Promise<ListPage> {
@@ -46,6 +64,12 @@ function remoteFetch(options: { fail?: boolean; version?: string } = {}): typeof
     const url = new URL(String(input))
     if (options.fail) throw new Error("connection refused")
     if (url.pathname === "/api/info") return Response.json({ version: options.version ?? "2.2.5" })
+    const one = url.pathname.match(/^\/api\/session\/([^/]+)$/)
+    if (one) {
+      return Response.json({
+        data: { id: decodeURIComponent(one[1]!), title: "Remote fixture", location: { directory: "/remote/repo" } },
+      })
+    }
     if (url.pathname === "/api/session") {
       return Response.json({ data: [{ id: transfer.info.id, title: transfer.info.title }], cursor: {} })
     }
@@ -111,6 +135,29 @@ describe("runAction", () => {
     expect(result.text).toContain("Teleported")
     expect(local.imports).toEqual([{ id: "ses_remote", directory: "/repo" }])
     expect(result.metadata).toMatchObject({ action: "pull", sessionID: "ses_remote", imported: 1, messages: 2 })
+  })
+
+  test("pull can preview without importing", async () => {
+    const local = new LocalServer()
+    const result = await runAction(
+      { action: "pull", remote: "mini", sessionID: "ses_remote", includeChildren: false, onConflict: "fail", dryRun: true },
+      deps({ local }),
+    )
+    expect(result.ok).toBe(true)
+    expect(result.text).toContain("Plan: Remote \"mini\" → This server")
+    expect(result.text).toContain("ses_remote")
+    expect(result.metadata).toMatchObject({ dryRun: true, sessions: 1 })
+    expect(local.imports).toEqual([])
+  })
+
+  test("push can preview without a remote import", async () => {
+    const result = await runAction(
+      { action: "push", remote: "mini", includeChildren: false, onConflict: "fail", dryRun: true },
+      deps({ local: new LocalServer() }),
+    )
+    expect(result.ok).toBe(true)
+    expect(result.text).toContain("Plan: This server → Remote \"mini\"")
+    expect(result.metadata).toMatchObject({ dryRun: true, sessionID: "ses_local" })
   })
 
   test("push copies the current session to a remote", async () => {

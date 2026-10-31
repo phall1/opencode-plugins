@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { formatHelp, formatRemotes, formatReport, formatSessionLine, formatSessions } from "../src/report.ts"
+import {
+  formatHelp,
+  formatPlan,
+  formatRemotes,
+  formatReport,
+  formatSessionLine,
+  formatSessions,
+} from "../src/report.ts"
 import type { TransferReport } from "../src/transfer.ts"
 
 const report: TransferReport = {
@@ -67,6 +74,33 @@ describe("session formatting", () => {
     expect(line).toContain("ses_1")
     expect(line).toContain("Fix things")
     expect(line).toContain("/repo")
+  })
+})
+
+describe("formatPlan", () => {
+  const plan = {
+    root: {
+      id: "ses_root",
+      title: "Root",
+      directory: "/remote/repo",
+      children: [{ id: "ses_child", title: "Child", directory: "/remote/repo", children: [] }],
+    },
+    sessions: 2,
+    truncated: false,
+  }
+
+  test("names both sides, the destination and the tree", () => {
+    const text = formatPlan(plan, 'Remote "mini"', "This server", "/work/repo")
+    expect(text.split("\n")[0]).toBe('Plan: Remote "mini" → This server')
+    expect(text).toContain("2 sessions, destination /work/repo")
+    expect(text).toContain("ses_root  Root  /remote/repo")
+    expect(text).toContain("ses_child  Child")
+  })
+
+  test("explains when destinations are preserved and when the plan is truncated", () => {
+    const text = formatPlan({ ...plan, truncated: true }, "a", "b", undefined)
+    expect(text).toContain("destination: each session's own directory")
+    expect(text).toContain("(truncated)")
   })
 })
 

@@ -43,6 +43,9 @@ export async function runTeleport(context: Context, raw: string): Promise<void> 
     if (!direction) return
     const request = await complete(context, options, direction, interactive)
     if (!request) return
+    if (interactive && (request.action === "pull" || request.action === "push")) {
+      if (!(await confirmPlan(context, options, request))) return
+    }
     await execute(context, options, request)
   } catch (error) {
     await context.ui.dialog.alert({ title: "Teleport", message: messageOf(error) })
@@ -81,6 +84,21 @@ async function complete(
   if (request.action === "pull" && interactive && directory === undefined) return undefined
 
   return { ...request, remote, sessionID, directory }
+}
+
+async function confirmPlan(context: Context, options: TeleportOptions, request: ActionRequest): Promise<boolean> {
+  if (request.action !== "pull" && request.action !== "push") return true
+  const preview = await runAction({ ...request, dryRun: true }, deps(context, options))
+  if (!preview.ok) {
+    await context.ui.dialog.alert({ title: "Teleport", message: preview.text })
+    return false
+  }
+  const confirmed = await context.ui.dialog.confirm({
+    title: request.action === "pull" ? "Pull sessions" : "Push sessions",
+    message: preview.text,
+    label: { confirm: "Teleport", cancel: "Cancel" },
+  })
+  return confirmed === true
 }
 
 async function resolveOptions(context: Context): Promise<TeleportOptions> {
@@ -187,7 +205,12 @@ async function sessionsFor(
   action: "pull" | "push",
   remote: string,
 ): Promise<SessionSummary[]> {
-  if (action === "push") return listAll(clientApi(context.client), { parentID: null, limit: 50 }, 50)
+  if (action === "push") {
+    const local = clientApi(context.client)
+    const directory = defaultDirectory(context)
+    const scoped = directory ? await listAll(local, { parentID: null, directory, limit: 50 }, 50) : []
+    return scoped.length > 0 ? scoped : listAll(local, { parentID: null, limit: 50 }, 50)
+  }
   const result = await runAction({ action: "sessions", remote }, deps(context, options))
   if (!result.ok) {
     await context.ui.dialog.alert({ title: "Teleport", message: result.text })

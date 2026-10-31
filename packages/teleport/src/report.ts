@@ -1,5 +1,5 @@
 import type { SessionSummary } from "./types.ts"
-import type { TransferNode, TransferReport } from "./transfer.ts"
+import type { PlanNode, TransferNode, TransferPlan, TransferReport } from "./transfer.ts"
 
 export function formatSessionLine(item: SessionSummary): string {
   const title = item.title?.trim() || "(untitled)"
@@ -70,6 +70,26 @@ export function formatRemotes(
   return lines.join("\n")
 }
 
+export function formatPlan(plan: TransferPlan, from: string, to: string, directory: string | undefined): string {
+  const destination = directory ? `destination ${directory}` : "destination: each session's own directory"
+  const lines = [
+    `Plan: ${from} → ${to}`,
+    `  ${plan.sessions} session${plan.sessions === 1 ? "" : "s"}${plan.truncated ? " (truncated)" : ""}, ${destination}`,
+    ...planLines(plan.root, 0),
+  ]
+  return lines.join("\n")
+}
+
+function planLines(node: PlanNode, depth: number): string[] {
+  const indent = "  ".repeat(depth + 1)
+  const title = node.title?.trim() || "(untitled)"
+  const directory = node.directory ? `  ${node.directory}` : ""
+  return [
+    `${indent}${node.id}  ${title}${directory}`,
+    ...node.children.flatMap((child) => planLines(child, depth + 1)),
+  ]
+}
+
 export function formatHelp(remoteNames: readonly string[]): string {
   const remotes = remoteNames.length === 0 ? "<none configured>" : remoteNames.join(", ")
   return [
@@ -84,6 +104,6 @@ export function formatHelp(remoteNames: readonly string[]): string {
     "  /teleport pull <remote> <session>  copy a remote session here",
     "  /teleport push <remote> <session>  copy a session to a remote",
     "",
-    "Flags: --directory <path> (quote paths with spaces), --no-children, --skip-conflicts",
+    "Flags: --directory <path> (quote paths with spaces), --no-children, --skip-conflicts, --plan",
   ].join("\n")
 }

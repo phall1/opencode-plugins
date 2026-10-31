@@ -13,13 +13,19 @@ type Recorded = {
   toasts: string[]
   selects: string[]
   prompts: string[]
+  confirms: string[]
   imports: { id: string; directory: string }[]
   focused: string[]
 }
 
 function fakeContext(
   recorded: Recorded,
-  options: { remotes?: Record<string, unknown>; documents?: unknown; inventory?: unknown } = {},
+  options: {
+    remotes?: Record<string, unknown>
+    documents?: unknown
+    inventory?: unknown
+    confirm?: boolean
+  } = {},
 ) {
   const imports: { id: string; directory: string }[] = []
   const stored = new Map<string, Transfer>()
@@ -67,6 +73,10 @@ function fakeContext(
           recorded.prompts.push("directory")
           return "/work/repo"
         },
+        confirm: async (input: { message: string }) => {
+          recorded.confirms.push(input.message)
+          return options.confirm ?? true
+        },
       },
       toast: {
         show: (input: { message: string }) => {
@@ -91,6 +101,12 @@ function remoteFetch(): typeof fetch {
   return (async (input: string | URL | Request) => {
     const url = new URL(String(input))
     if (url.pathname === "/api/info") return Response.json({ version: "2.2.5" })
+    const one = url.pathname.match(/^\/api\/session\/([^/]+)$/)
+    if (one) {
+      return Response.json({
+        data: { id: decodeURIComponent(one[1]!), title: "Remote fixture", location: { directory: "/remote/repo" } },
+      })
+    }
     if (url.pathname === "/api/session") return Response.json({ data: [fixture.info], cursor: {} })
     if (url.pathname.endsWith("/export")) return Response.json({ data: fixture })
     return Response.json({ _tag: "NotFound" }, { status: 404 })
@@ -103,7 +119,7 @@ afterEach(() => {
 })
 
 function recorded(): Recorded {
-  return { alerts: [], toasts: [], selects: [], prompts: [], imports: [], focused: [] }
+  return { alerts: [], toasts: [], selects: [], prompts: [], confirms: [], imports: [], focused: [] }
 }
 
 describe("targetsFromInventory", () => {
@@ -143,9 +159,21 @@ describe("TUI teleport flow", () => {
 
     expect(seen.selects).toEqual(["Teleport", "Session to pull"])
     expect(seen.prompts).toEqual(["directory"])
+    expect(seen.confirms).toHaveLength(1)
+    expect(seen.confirms[0]).toContain("Plan: Remote \"a\" → This server")
+    expect(seen.confirms[0]).toContain("ses_remote  Remote fixture")
     expect(seen.imports).toEqual([{ id: "ses_remote", directory: "/work/repo" }])
     expect(seen.toasts).toContain("Teleporting session here…")
     expect(seen.focused).toEqual(["ses_remote"])
+  })
+
+  test("cancelling the plan confirmation aborts the transfer", async () => {
+    globalThis.fetch = remoteFetch()
+    const seen = recorded()
+    await runTeleport(fakeContext(seen, { remotes: { a: "http://remote:1" }, confirm: false }), "")
+    expect(seen.confirms).toHaveLength(1)
+    expect(seen.imports).toEqual([])
+    expect(seen.toasts).toEqual([])
   })
 
   test("remotes renders the probe", async () => {

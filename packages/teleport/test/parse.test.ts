@@ -30,6 +30,7 @@ describe("parseCommand", () => {
       directory: undefined,
       includeChildren: true,
       onConflict: "fail",
+      dryRun: false,
     })
     expect(parseCommand("pull --skip-conflicts --no-children --directory /work mini ses_123")).toEqual({
       action: "pull",
@@ -38,7 +39,10 @@ describe("parseCommand", () => {
       directory: "/work",
       includeChildren: false,
       onConflict: "skip",
+      dryRun: false,
     })
+    expect(parseCommand("pull --plan mini ses_123")).toMatchObject({ action: "pull", dryRun: true })
+    expect(parseCommand("push --dry-run mini")).toMatchObject({ action: "push", dryRun: true })
     expect(parseCommand("pull mini ses_123 --directory=/srv/repo")).toEqual({
       action: "pull",
       remote: "mini",
@@ -46,6 +50,7 @@ describe("parseCommand", () => {
       directory: "/srv/repo",
       includeChildren: true,
       onConflict: "fail",
+      dryRun: false,
     })
   })
 
@@ -57,6 +62,7 @@ describe("parseCommand", () => {
       directory: undefined,
       includeChildren: true,
       onConflict: "fail",
+      dryRun: false,
     })
   })
 

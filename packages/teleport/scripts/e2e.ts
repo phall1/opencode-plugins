@@ -232,7 +232,15 @@ try {
 
   const localApi = httpApi({ name: "local", url: local.url, username: "opencode", password })
   const deps = {
-    options: { remotes: { a: { url: remote.url, password } } },
+    options: {
+      remotes: {
+        a: { url: remote.url, password },
+        viaCommand: {
+          url: remote.url,
+          passwordCommand: ["/bin/sh", "-c", `printf '%s' '${password}'`],
+        },
+      },
+    },
     env: {},
     local: () => localApi,
     localReason: () => "e2e",
@@ -242,14 +250,33 @@ try {
   const remotes = await runAction({ action: "remotes" }, deps)
   assert.equal(remotes.ok, true, remotes.text)
   assert.match(remotes.text, /a\s+http:\/\/127\.0\.0\.1:\d+\s+OpenCode/)
+  assert.match(remotes.text, /viaCommand\s+http:\/\/127\.0\.0\.1:\d+\s+OpenCode/)
   assert.match(remotes.text, /local\s+http:\/\/127\.0\.0\.1:\d+\s+OpenCode 2\.2\.5/)
-  log("remotes probe reported both servers")
+  log("remotes probe reported both servers, including a passwordCommand credential")
 
   const sessions = await runAction({ action: "sessions", remote: "a" }, deps)
   assert.equal(sessions.ok, true, sessions.text)
   assert.match(sessions.text, /E2E root/)
   assert.equal(sessions.metadata.count, 1)
   log(`sessions listed the remote roots (${String(sessions.metadata.count)} row)`)
+
+  const preview = await runAction(
+    {
+      action: "pull",
+      remote: "a",
+      sessionID: childID,
+      includeChildren: true,
+      onConflict: "fail",
+      dryRun: true,
+      directory: workLocal,
+    },
+    deps,
+  )
+  assert.equal(preview.ok, true, preview.text)
+  assert.match(preview.text, /^Plan: Remote "a" → Local server/)
+  assert.match(preview.text, /1 session, destination /)
+  assert.equal(preview.metadata.dryRun, true)
+  log("dry-run preview described the tree without importing")
 
   const pushedSession = await call(local.url, "POST", "/api/session", {
     title: "E2E pushed",

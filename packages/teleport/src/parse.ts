@@ -11,6 +11,7 @@ export type ActionRequest =
       readonly directory?: string
       readonly includeChildren: boolean
       readonly onConflict: ConflictPolicy
+      readonly dryRun?: boolean
     }
 
 const DIRECTORY_FLAGS = new Set(["--directory", "--dir", "-d"])
@@ -27,6 +28,7 @@ export function parseCommand(input: string): ActionRequest {
   let directory: string | undefined
   let includeChildren = true
   let onConflict: ConflictPolicy = "fail"
+  let dryRun = false
   for (let index = 0; index < tokens.length; index++) {
     const token = tokens[index]!
     if (DIRECTORY_FLAGS.has(token)) {
@@ -55,6 +57,10 @@ export function parseCommand(input: string): ActionRequest {
       onConflict = "skip"
       continue
     }
+    if (token === "--plan" || token === "--dry-run") {
+      dryRun = true
+      continue
+    }
     positional.push(token)
   }
   const command = positional[0]
@@ -76,6 +82,7 @@ export function parseCommand(input: string): ActionRequest {
       directory,
       includeChildren,
       onConflict,
+      dryRun,
     }
   }
   return { action: "help", note: `unknown command "${command}"` }
