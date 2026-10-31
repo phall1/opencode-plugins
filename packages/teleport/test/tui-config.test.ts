@@ -36,6 +36,23 @@ describe("optionsFromConfig", () => {
     expect(options.timeoutMs).toBe(5000)
   })
 
+  test("matches git install specs by their package path", () => {
+    const documents = [
+      {
+        info: {
+          plugins: [
+            {
+              package: "github:phall1/opencode-plugins#0123456::path:packages/teleport",
+              options: { remotes: { mini: "http://mini:1" } },
+            },
+          ],
+        },
+      },
+    ]
+    const options = optionsFromConfig(documents, ["@phall1/opencode-teleport", "/repo/packages/teleport"])
+    expect(options.remotes).toEqual({ mini: "http://mini:1" })
+  })
+
   test("returns empty options when nothing matches", () => {
     expect(optionsFromConfig(documents, ["@other/plugin"])).toEqual({})
     expect(optionsFromConfig(undefined, targets)).toEqual({})

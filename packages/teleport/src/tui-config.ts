@@ -56,7 +56,12 @@ function pluginEntries(documents: unknown): { package: string; options?: unknown
 
 function matches(packageSpec: string, targets: readonly string[]): boolean {
   const normalized = normalize(packageSpec)
-  return targets.some((target) => normalize(target) === normalized)
+  if (targets.some((target) => normalize(target) === normalized)) return true
+  // Git installs are specs like `github:org/repo#sha::path:packages/teleport`;
+  // the package directory is the part that identifies this plugin.
+  const path = normalized.includes("::path:") ? normalized.slice(normalized.indexOf("::path:") + "::path:".length) : undefined
+  if (!path) return false
+  return targets.some((target) => normalize(target).endsWith(`/${normalize(path)}`))
 }
 
 function normalize(value: string): string {
