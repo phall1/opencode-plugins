@@ -42,7 +42,7 @@ command, and an interactive TUI flow.
 {
   "plugins": [
     {
-      "package": "@phall1/opencode-teleport",
+      "package": "github:phall1/opencode-plugins#<commit>::path:packages/teleport",
       "options": { "remotes": { "mini": { "url": "http://host:49374", "passwordEnv": "MINI_PASSWORD" } } }
     }
   ]
