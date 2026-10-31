@@ -82,8 +82,12 @@ make retries idempotent.
 /teleport remotes
 /teleport sessions mini [query]
 /teleport pull mini ses_123 --directory /repo
+/teleport pull mini ses_123 --directory "/Users/me/My Repo"
 /teleport push mini ses_123 --no-children --skip-conflicts
 ```
+
+Quote a path containing spaces, exactly as the flags line in `/teleport`
+help says.
 
 ### TUI
 
@@ -142,7 +146,7 @@ does not have this limitation: it uses the already-authenticated client, so
 ## Development
 
 ```sh
-bun run check       # typecheck + 76 tests
+bun run check       # typecheck + 79 tests
 bun run e2e         # two real isolated OpenCode servers, real command-driven pull
 ```
 
