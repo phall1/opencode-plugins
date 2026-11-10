@@ -19,8 +19,8 @@ Or load the package from this repo:
 
 The CLI loads `./tui` from the same package. Do not add it to `cli.json`.
 The checked-in `tui.js` is universal-compiled: run `bun run compile` after UI
-changes. Compatibility is tested with OpenCode 2.0.32, Effect 4.0.1,
-OpenTUI 0.5.17, and Solid 1.9.12; host runtimes stay external.
+changes. Compatibility is tested with OpenCode 2.2.6, Effect 4.1.0,
+OpenTUI 0.8.1, and Solid 1.9.17; host runtimes stay external.
 Git installs require no build lifecycle hooks; the compiled OpenCode installer
 cannot run npm Git preparation.
 

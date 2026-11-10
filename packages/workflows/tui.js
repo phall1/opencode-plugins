@@ -667,6 +667,10 @@ function RunHeader(props) {
 }
 function WorkflowGraph(props) {
   const context = usePlugin();
+  const syntaxStyle = SyntaxStyle.fromTheme([], context.renderer.nativeScene);
+  onCleanup(() => {
+    context.renderer.idle().then(() => syntaxStyle.destroy());
+  });
   return _$createComponent(Show, {
     get when() {
       return props.renderNode;
@@ -685,20 +689,19 @@ function WorkflowGraph(props) {
       _$setProp(_el$14, "scrollbarOptions", {
         visible: false
       });
+      _$setProp(_el$15, "syntaxStyle", syntaxStyle);
       _$effect((_p$) => {
-        var _v$8 = props.fullscreen ? 18 : 12, _v$9 = context.theme.text.base, _v$0 = SyntaxStyle.fromTheme([]), _v$1 = "```mermaid\n" + workflowMermaid(props.run) + "\n```", _v$10 = props.renderNode;
+        var _v$8 = props.fullscreen ? 18 : 12, _v$9 = context.theme.text.base, _v$0 = "```mermaid\n" + workflowMermaid(props.run) + "\n```", _v$1 = props.renderNode;
         _v$8 !== _p$.e && (_p$.e = _$setProp(_el$14, "maxHeight", _v$8, _p$.e));
         _v$9 !== _p$.t && (_p$.t = _$setProp(_el$15, "fg", _v$9, _p$.t));
-        _v$0 !== _p$.a && (_p$.a = _$setProp(_el$15, "syntaxStyle", _v$0, _p$.a));
-        _v$1 !== _p$.o && (_p$.o = _$setProp(_el$15, "content", _v$1, _p$.o));
-        _v$10 !== _p$.i && (_p$.i = _$setProp(_el$15, "renderNode", _v$10, _p$.i));
+        _v$0 !== _p$.a && (_p$.a = _$setProp(_el$15, "content", _v$0, _p$.a));
+        _v$1 !== _p$.o && (_p$.o = _$setProp(_el$15, "renderNode", _v$1, _p$.o));
         return _p$;
       }, {
         e: undefined,
         t: undefined,
         a: undefined,
-        o: undefined,
-        i: undefined
+        o: undefined
       });
       return _el$14;
     }
@@ -747,14 +750,14 @@ function NodeRow(props) {
     _$setProp(_el$23, "wrapMode", "none");
     _$insert(_el$23, () => rowTail(props.node, props.now));
     _$effect((_p$) => {
-      var _v$11 = props.active ? context.theme.background.action.primary.focused : undefined, { onChoose: _v$12, onOpen: _v$13 } = props, _v$14 = props.active ? fg() : context.theme.text.muted, _v$15 = fg(), _v$16 = props.active ? TextAttributes.BOLD : undefined, _v$17 = props.active ? fg() : context.theme.text.muted;
-      _v$11 !== _p$.e && (_p$.e = _$setProp(_el$18, "backgroundColor", _v$11, _p$.e));
-      _v$12 !== _p$.t && (_p$.t = _$setProp(_el$18, "onMouseMove", _v$12, _p$.t));
-      _v$13 !== _p$.a && (_p$.a = _$setProp(_el$18, "onMouseUp", _v$13, _p$.a));
-      _v$14 !== _p$.o && (_p$.o = _$setProp(_el$21, "fg", _v$14, _p$.o));
-      _v$15 !== _p$.i && (_p$.i = _$setProp(_el$22, "fg", _v$15, _p$.i));
-      _v$16 !== _p$.n && (_p$.n = _$setProp(_el$22, "attributes", _v$16, _p$.n));
-      _v$17 !== _p$.s && (_p$.s = _$setProp(_el$23, "fg", _v$17, _p$.s));
+      var _v$10 = props.active ? context.theme.background.action.primary.focused : undefined, { onChoose: _v$11, onOpen: _v$12 } = props, _v$13 = props.active ? fg() : context.theme.text.muted, _v$14 = fg(), _v$15 = props.active ? TextAttributes.BOLD : undefined, _v$16 = props.active ? fg() : context.theme.text.muted;
+      _v$10 !== _p$.e && (_p$.e = _$setProp(_el$18, "backgroundColor", _v$10, _p$.e));
+      _v$11 !== _p$.t && (_p$.t = _$setProp(_el$18, "onMouseMove", _v$11, _p$.t));
+      _v$12 !== _p$.a && (_p$.a = _$setProp(_el$18, "onMouseUp", _v$12, _p$.a));
+      _v$13 !== _p$.o && (_p$.o = _$setProp(_el$21, "fg", _v$13, _p$.o));
+      _v$14 !== _p$.i && (_p$.i = _$setProp(_el$22, "fg", _v$14, _p$.i));
+      _v$15 !== _p$.n && (_p$.n = _$setProp(_el$22, "attributes", _v$15, _p$.n));
+      _v$16 !== _p$.s && (_p$.s = _$setProp(_el$23, "fg", _v$16, _p$.s));
       return _p$;
     }, {
       e: undefined,
