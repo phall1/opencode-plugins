@@ -190,12 +190,14 @@ function WorkflowGraph(props: {
   fullscreen: boolean
 }) {
   const context = usePlugin()
+  const syntaxStyle = SyntaxStyle.fromTheme([], context.renderer.nativeScene)
+  onCleanup(() => { void context.renderer.idle().then(() => syntaxStyle.destroy()) })
   return (
     <Show when={props.renderNode} fallback={<text fg={context.theme.text.muted}>Diagram unavailable · step list remains available</text>}>
       <scrollbox maxHeight={props.fullscreen ? 18 : 12} scrollbarOptions={{ visible: false }}>
         <markdown
           fg={context.theme.text.base}
-          syntaxStyle={SyntaxStyle.fromTheme([])}
+          syntaxStyle={syntaxStyle}
           content={"```mermaid\n" + workflowMermaid(props.run) + "\n```"}
           renderNode={props.renderNode}
         />
